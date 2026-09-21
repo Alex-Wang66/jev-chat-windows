@@ -62,6 +62,14 @@ def reply_target() -> bool:
     except (OSError, ValueError):
         return False
 
+def thinking() -> bool:
+    """起草时是否开思考模式：慢且贵，默认关。两个来源（OpenRouter/DeepSeek）都吃这个开关。"""
+    try:
+        with open(_CONFIG, encoding="utf-8") as f:
+            return bool(json.load(f).get("thinking", False))
+    except (OSError, ValueError):
+        return False
+
 def _get_key(env_name: str) -> str:
     """进程环境优先；没有就读注册表并带进进程环境，之后 core/ 里按 os.environ 读就有了。"""
     v = os.environ.get(env_name, "").strip()
@@ -104,7 +112,8 @@ def has_deepseek_key() -> bool:
 
 def save(key_text: str | None, relationship_text: str, context_n: int | None = None,
          deepseek_key_text: str | None = None, provider_text: str | None = None,
-         reply_target_on: bool | None = None, style_text: str | None = None) -> None:
+         reply_target_on: bool | None = None, style_text: str | None = None,
+         thinking_on: bool | None = None) -> None:
     """每个参数为空/None = 保留当前值。两个 key 都只写进程环境 + HKCU\\Environment，不写任何文件。"""
     if key_text:
         _set_key(_ENV, key_text)
@@ -114,6 +123,7 @@ def save(key_text: str | None, relationship_text: str, context_n: int | None = N
     provider = provider_text if provider_text in _PROVIDERS else draft_provider()  # None 或脏值 = 保留原来的
     target = reply_target() if reply_target_on is None else bool(reply_target_on)
     style_v = style() if style_text is None else str(style_text).strip()  # 空串 = 清掉
+    think = thinking() if thinking_on is None else bool(thinking_on)
     with open(_CONFIG, "w", encoding="utf-8") as f:
         json.dump({"relationship": relationship_text, "context": n, "draft_provider": provider,
-                   "reply_target": target, "style": style_v}, f, ensure_ascii=False)
+                   "reply_target": target, "style": style_v, "thinking": think}, f, ensure_ascii=False)

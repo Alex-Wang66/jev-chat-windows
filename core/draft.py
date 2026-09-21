@@ -22,14 +22,15 @@ CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash"  # OpenRouter 上的 DeepSeek V4.1 Flash
 MAX_RETRIES = 3
 
-# provider -> (url, 默认模型, key 的环境变量名)
-# (url, 默认模型, key 的环境变量名, 请求体里额外要带的字段)
-# V4.1 Flash 默认**开着思考模式**（effort=high，max_tokens 64K）——起草三句聊天回复不需要，慢还贵，两边都显式关掉。
+# provider -> (url, 默认模型, key 的环境变量名, thinking 开关 -> 请求体里额外要带的字段)
+# V4.1 Flash 默认**开着思考模式**（effort=high，max_tokens 64K）——起草三句聊天回复默认不需要，慢还贵，
+# 两边默认都关；设置里开了思考模式才让模型先想再写（draft_candidates 的 thinking 参数）。
 PROVIDERS = {
-    "openrouter": (CHAT_URL, DEFAULT_MODEL, "OPENROUTER_API_KEY", {"reasoning": {"enabled": False}}),
+    "openrouter": (CHAT_URL, DEFAULT_MODEL, "OPENROUTER_API_KEY",
+                   lambda on: {"reasoning": {"enabled": on}}),
     # 官方 id：deepseek-flash = DeepSeek-V4.1-Flash；deepseek-chat 2026-07-24 已下线，只是暂时还被路由
     "deepseek": ("https://api.deepseek.com/chat/completions", "deepseek-flash", "DEEPSEEK_API_KEY",
-                 {"thinking": {"type": "disabled"}}),
+                 lambda on: {"thinking": {"type": "enabled" if on else "disabled"}}),
 }
 
 # 中文写，DeepSeek 跟得更紧。每一条都是冲着「人机感」去的，别随手删。
@@ -142,14 +143,15 @@ def _line(m) -> str:
 
 def draft_candidates(messages: list, relationship: str, provider: str = "openrouter",
                      model: str | None = None, timeout: float = 30, keep: int = 10,
-                     reply_to: str | None = None, style: str = "") -> list[str]:
+                     reply_to: str | None = None, style: str = "", thinking: bool = False) -> list[str]:
     """messages: [(from, text)] 或 [(from, text, name)]，from ∈ {her, me}，name = 群里的发言人；
     只看最近 keep 条。返回最多 3 条中文候选（模型两次都给不够时可能少于 3，至少 1）。
 
     reply_to: 群聊里指定回复给谁；None = 正常回复。
     style: 用户自己描述的口吻（设置里的「说话风格」），空就只靠样本模仿。
+    thinking: 思考模式，默认关（慢且贵）；开了模型会先想再写。设置里的开关。
     provider ∈ PROVIDERS；model=None 用该来源的默认模型。"""
-    url, default_model, env, extra = PROVIDERS[provider]
+    url, default_model, env, extra_fn = PROVIDERS[provider]
     transcript = "\n".join(_line(m) for m in messages[-keep:])
     user = f"relationship: {relationship}\n\n对话（最后一条是最新）:\n{transcript}"
     # 风格样本：me 自己说过的短句，整段对话里捞（不止最近 keep 条）。链接和长段不是风格，扔掉。
@@ -165,9 +167,10 @@ def draft_candidates(messages: list, relationship: str, provider: str = "openrou
     user += "\n\n输出恰好 3 条候选，JSON 数组，每条一句。"
     chat = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}]
     # 1.2：DeepSeek 自己推荐的闲聊档位，0.8 出来的话太板正
+    # max_tokens：三句话本来 400 够，但 DeepSeek 把思考过程也算进 max_tokens，开了思考模式 400 会把答案截断
     body = {"model": model or default_model, "messages": chat, "temperature": 1.2,
-            "max_tokens": 400,  # 三句话的量；不设的话思考模式下默认 64K
-            "stream": False, **extra}  # stream: DeepSeek 要显式关；OpenRouter 无所谓
+            "max_tokens": 4000 if thinking else 400,
+            "stream": False, **extra_fn(thinking)}  # stream: DeepSeek 要显式关；OpenRouter 无所谓
     key = _api_key(env)
 
     content = _chat(url, key, body, timeout)

@@ -501,6 +501,17 @@ class Overlay:
         # 只有选了直连才显示这一组；dsHint 额外还要看紧凑模式，单独存，不进 _hintLabels
         self._dsWidgets = (ds_label, self.dsKeyState, self.dsKeyEdit)
         self.providerBox.currentIndexChanged.connect(lambda index: self._sync_ds_fields())
+        think_row = QHBoxLayout()
+        think_row.addWidget(_label("起草时开启思考模式", 13), 1)
+        self.thinkingSwitch = SwitchButton()
+        self.thinkingSwitch.setOnText("开")
+        self.thinkingSwitch.setOffText("关")
+        self.thinkingSwitch.setAccessibleName("起草时开启思考模式")
+        think_row.addWidget(self.thinkingSwitch)
+        box.addLayout(think_row)
+        box.addWidget(self._hint(
+            "关：秒回，够用。开：模型先想再写，更斟酌但慢好几倍、贵一些。两种来源都生效。"
+        ))
         body.addWidget(connection)
         self.settingsFeedback = _label("", 13, _GREEN)
         self.settingsFeedback.hide()
@@ -557,6 +568,7 @@ class Overlay:
         self.dsKeyEdit.setPlaceholderText(
             "已配置，留空保留" if settings.has_deepseek_key() else "输入你的 DeepSeek 密钥")
         self.dsKeyState.setText("已配置" if settings.has_deepseek_key() else "未配置")
+        self.thinkingSwitch.setChecked(settings.thinking())
         self._sync_ds_fields()  # setCurrentIndex 没变就不发信号，这里补一次
         self.settingsFeedback.hide()
 
@@ -582,7 +594,8 @@ class Overlay:
             settings.save(key or None, relationship, self.contextBox.value(),
                           deepseek_key or None, provider,
                           reply_target_on=self.targetSwitch.isChecked(),
-                          style_text=self.styleEdit.text().strip())
+                          style_text=self.styleEdit.text().strip(),
+                          thinking_on=self.thinkingSwitch.isChecked())
         except Exception:
             self._settings_feedback("保存失败，请检查配置文件是否可写后重试。", error=True)
             return

@@ -79,7 +79,7 @@ def analyze_bg(msgs, title, revision, reply_to=None):
     try:
         results.put(("ok", analyze(msgs, settings.relationship(), context=settings.context(),
                                    provider=settings.draft_provider(), reply_to=reply_to,
-                                   style=settings.style()),
+                                   style=settings.style(), thinking=settings.thinking()),
                      title, revision))
     except Exception as e:
         results.put(("err", f"分析失败: {e}", title, revision))
