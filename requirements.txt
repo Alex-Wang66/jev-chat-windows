@@ -1,9 +1,10 @@
-rapidocr-onnxruntime          # 本地离线中文 OCR，吃 numpy 数组，不落盘
-numpy                         # 帧就是 numpy 数组，消息区定位全靠它
-windows-capture               # Windows Graphics Capture，能截 GPU 合成窗口
-PySide6-Fluent-Widgets        # 悬浮窗 UI（会一并装上 PySide6）
-pillow                        # probe/ 合成图用；主程序不需要
+# ASCII only: pip on Chinese Windows decodes this file as GBK and chokes on UTF-8 comments.
+rapidocr-onnxruntime          # offline Chinese OCR, takes numpy arrays, nothing hits disk
+numpy                         # frames are numpy arrays; chat-area detection is all numpy
+windows-capture               # Windows Graphics Capture, captures GPU-composited windows
+PySide6-Fluent-Widgets        # overlay UI (pulls in PySide6)
+pillow                        # only for the synthetic images in probe/
 
-# 可选，只给 probe/ 里那两个 UIA 探针用（结论已证伪，复现才装）
+# optional, only for the two old UIA probes (already disproved; install to reproduce)
 # uiautomation                # probe_win.py / probe_win2.py
 # winsdk                      # probe_notify.py

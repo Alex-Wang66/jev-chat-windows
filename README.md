@@ -62,7 +62,7 @@ WGC 截微信窗口（GPU 合成窗口也能截，被遮挡也能截）
 ## 环境要求
 
 - **Windows 10 1903+ 或 Windows 11**（Windows Graphics Capture 的最低要求）
-- **Python 3.12**
+- **Python 3.10+**
 - **微信 Windows 4.x**（`Weixin.exe`）
 - **OpenRouter API key**（[openrouter.ai](https://openrouter.ai/)）
 
