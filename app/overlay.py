@@ -471,7 +471,7 @@ class Overlay:
         box.addWidget(provider_label)
         self.providerBox = ComboBox()
         self.providerBox.setMinimumWidth(0)  # 选项文字很长，别让它撑开设置页
-        self.providerBox.addItems(["OpenRouter（DeepSeek V3.1，用上面同一个 key）",
+        self.providerBox.addItems(["OpenRouter（DeepSeek V4.1 Flash，用上面同一个 key）",
                                    "DeepSeek 直连（更快，需要 DeepSeek key）"])
         self.providerBox.setAccessibleName("起草模型来源")
         provider_label.setBuddy(self.providerBox)
@@ -520,7 +520,7 @@ class Overlay:
         """DeepSeek 那组字段：选了直连才显示；说明文字紧凑模式下再多加一条限制。
         顺带把 providerBox 按钮上的文字按紧凑模式省略——它是 QPushButton，
         minimumSizeHint 跟 sizeHint 一样是按整段文字算的，不会自动换行/省略，
-        选项文字很长（"OpenRouter（DeepSeek V3.1，用上面同一个 key）"）时会把设置页撑宽。"""
+        选项文字很长（"OpenRouter（DeepSeek V4.1 Flash，用上面同一个 key）"）时会把设置页撑宽。"""
         deepseek = self.providerBox.currentIndex() == 1
         for w in self._dsWidgets:
             w.setVisible(deepseek)
