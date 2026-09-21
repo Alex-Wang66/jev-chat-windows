@@ -9,8 +9,11 @@ from __future__ import annotations
 import ctypes
 import json
 import os
+import sys  # 只为下面这一处：打包后 __file__ 指向临时解包目录，config.json 得放在 exe 旁边才存得住
 
-_CONFIG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json")
+_ROOT = (os.path.dirname(sys.executable) if getattr(sys, "frozen", False)
+         else os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_CONFIG = os.path.join(_ROOT, "config.json")
 _DEFAULT_RELATIONSHIP = "romantic partners"
 _DEFAULT_CONTEXT = 10
 _ENV = "OPENROUTER_API_KEY"

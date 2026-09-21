@@ -21,6 +21,20 @@
 </tr>
 </table>
 
+## 下载即用
+
+不想装 Python 就走这条：
+
+1. 去 [Releases](https://github.com/rezoch340/jev-chat-JARVIS-windows/releases) 下最新的
+   `jev-chat-JARVIS-windows-vX.Y.Z.zip`
+2. 解压到一个固定目录（整个文件夹一起，exe 要用旁边那堆文件）
+3. 双击 `jev-chat-JARVIS-windows.exe`
+
+首次启动会弹设置页填 OpenRouter API key。key 照旧写进 Windows 用户环境变量（注册表 `HKCU\Environment`），
+不落任何文件；关系设置和参考上下文条数写在 exe 旁边的 `config.json`，整个文件夹拷走设置也跟着走。
+
+> exe 没签名，SmartScreen 会拦一下：「更多信息」→「仍要运行」。介意就往下看「自己打包」，自己打的更踏实。
+
 ## 隐私与边界
 
 这是个人自用工具，下面几条是硬约束，代码里就是这么写的：
@@ -62,7 +76,7 @@ WGC 截微信窗口（GPU 合成窗口也能截，被遮挡也能截）
 ## 环境要求
 
 - **Windows 10 1903+ 或 Windows 11**（Windows Graphics Capture 的最低要求）
-- **Python 3.10+**
+- **Python 3.10+**（Releases 里的 exe 是 CI 用 3.11 打的；只想用 exe 的话不用装 Python）
 - **微信 Windows 4.x**（`Weixin.exe`）
 - **OpenRouter API key**（[openrouter.ai](https://openrouter.ai/)）
 
@@ -85,6 +99,18 @@ PyCharm / VS Code 里直接 Run `main.py` 也行。
 首次启动会自动弹出设置页：填 OpenRouter API key，选你们的关系（恋人 / 朋友 / 同事 / 家人 / 自定义）。
 key 通过 `setx` 写进 Windows 用户环境变量 `OPENROUTER_API_KEY`，重启后依然有效，不落任何文件；
 关系写进项目根的 `config.json`（已在 `.gitignore` 里）。
+
+### 自己打包
+
+双击 `build.bat`（没有 `.venv` 会自己建一个，装依赖、调 PyInstaller，一路到底），或者手动：
+
+```bash
+pip install -r requirements.txt pyinstaller
+pyinstaller --noconfirm --clean jev.spec
+```
+
+出来的是 `dist\jev-chat-JARVIS-windows\`，整个文件夹就是成品（onedir：onefile 有 150MB 要每次启动解压）。
+推一个 `v*` tag，`.github/workflows/release.yml` 会在 `windows-latest` 上打好、压成 zip 挂到 Release 上。
 
 ## 使用说明
 
@@ -120,6 +146,10 @@ core/                   Jev 判断内核，平台无关，跟安卓原版同一�
 tools/
   demo.py               端到端冒烟：拿一段写死的对话跑完整链（需 key + 联网）
   preview_ui.py         用合成数据预览界面，不采集不联网不碰微信；可 --screenshot 出图
+  make_icon.py          生成 docs/icon.ico（打包图标），图标已提交，换颜色才用重跑
+jev.spec                PyInstaller 打包定义，build.bat 和 CI 共用这一份
+build.bat               本地一键打包（双击就行）
+.github/workflows/release.yml  推 v* tag → windows-latest 上打包 → zip 挂到 Release
 probe/                  一次性探针，结论已写进本文，留着是为了可复现
   probe_win.py          UIA 能不能读微信聊天文字 → 证伪（树是空的）
   probe_win2.py         UIA 证伪 v2：分清「树是空的」和「有树没文字」，顺带试 LegacyIAccessible
