@@ -141,17 +141,23 @@ class _ReplyCard(_Surface):
 
 
 class Overlay:
-    def __init__(self, on_fill, on_toggle_capture=None):
+    def __init__(self, on_fill, on_toggle_capture=None, result_of=None):
+        """result_of(会话名) → 那个会话上次的结果或 None；切着看别的会话时用它把旧结果放回来。"""
         self.app = QApplication.instance() or QApplication([])
         setTheme(Theme.LIGHT)
         setThemeColor(_GREEN, save=False)
         self.on_fill = on_fill
         self.on_toggle_capture = on_toggle_capture
+        self.result_of = result_of
         self.cands = []
         self.cards = []
         self._busy = False
         self._current = False
-        self._message_count = 0
+        self.feeds = {}  # {会话名: [排好版的记录]}
+        self.counts = {}  # {会话名: 消息条数}
+        self.hers = {}  # {会话名: 对方最近一句}
+        self._chat = ""  # 微信当前开着的会话
+        self._shown = ""  # 界面上正在看的会话（浏览时和上面不一样）
         self.win = QWidget()
         self.win.setObjectName("assistantWindow")
         self.win.setWindowTitle("Jev · 微信回复助手")
@@ -232,6 +238,22 @@ class Overlay:
         self.updated.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         heading.addWidget(self.updated)
         body.addLayout(heading)
+        chat_row = QHBoxLayout()
+        chat_row.setSpacing(8)
+        prefix = _label("当前会话", 12, _MUTED)
+        prefix.setFixedWidth(56)
+        chat_row.addWidget(prefix)
+        self.chatBox = ComboBox()
+        self.chatBox.setPlaceholderText("尚未识别到会话")
+        self.chatBox.setAccessibleName("当前会话")
+        self.chatBox.setToolTip("微信切到哪个会话这里就跟到哪个；也可以自己选一个，只看它的记录和建议")
+        self.chatBox.currentIndexChanged.connect(self._on_chat_selected)
+        chat_row.addWidget(self.chatBox, 1)
+        self.chatFollow = _label("", 11, _MUTED)
+        self.chatFollow.setFixedWidth(52)
+        self.chatFollow.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        chat_row.addWidget(self.chatFollow)
+        body.addLayout(chat_row)
         self.status = _label("", 12, _MUTED)
         body.addWidget(self.status)
         self.progress = IndeterminateProgressBar()
@@ -459,8 +481,7 @@ class Overlay:
         self._settings_feedback("设置已保存，将用于下一次回复。")
         self.setupButton.hide()
         if not self.cands and not self._busy:
-            self.emptyTitle.setText("等待对方的新消息")
-            self.emptyHint.setText("保持微信聊天窗口打开。\n收到新消息后，回复建议会出现在这里。")
+            self._empty_text()
             self.set_status("设置已就绪，等待新消息", "idle")
 
     def _settings_feedback(self, text, error=False):
@@ -526,11 +547,9 @@ class Overlay:
         if not on:
             self.emptyTitle.setText("采集已暂停")
             self.emptyHint.setText("微信里的内容暂时不再读取。\n打开标题栏的开关，继续接收新消息。")
+            self.setupButton.setVisible(not configured)
         else:
-            self.emptyTitle.setText("等待对方的新消息" if configured else "先设置，再开始")
-            self.emptyHint.setText("保持微信聊天窗口打开。\n收到新消息后，回复建议会出现在这里。"
-                                   if configured else "配置回复服务和关系背景，\n让建议更贴近你们的对话。")
-        self.setupButton.setVisible(not configured)
+            self._empty_text()
 
     def set_busy(self, busy):
         self._busy = busy
@@ -546,13 +565,17 @@ class Overlay:
         else:
             self.progress.stop()
             if not self.cands:
-                configured = settings.has_key()
-                self.emptyTitle.setText("等待对方的新消息" if configured else "先设置，再开始")
-                self.emptyHint.setText("保持微信聊天窗口打开。\n收到新消息后，回复建议会出现在这里。"
-                                       if configured else "配置回复服务和关系背景，\n让建议更贴近你们的对话。")
-                self.setupButton.setVisible(not configured)
+                self._empty_text()
         for card in self.cards:
             card.set_available(self._current and not busy)
+
+    def _empty_text(self):
+        """空态卡片的默认文案，配好没配好两套说法。"""
+        configured = settings.has_key()
+        self.emptyTitle.setText("等待对方的新消息" if configured else "先设置，再开始")
+        self.emptyHint.setText("保持微信聊天窗口打开。\n收到新消息后，回复建议会出现在这里。"
+                               if configured else "配置回复服务和关系背景，\n让建议更贴近你们的对话。")
+        self.setupButton.setVisible(not configured)
 
     def invalidate_replies(self):
         self._current = False
@@ -581,36 +604,114 @@ class Overlay:
 
     def _history_title(self):
         action = "展开" if self.feed.isHidden() else "收起"
-        self.historyButton.setText(f"{action}聊天记录" + (f" · {self._message_count}" if self._message_count else ""))
+        count = self.counts.get(self._shown, 0)
+        self.historyButton.setText(f"{action}聊天记录" + (f" · {count}" if count else ""))
 
     def log(self, line):
+        """采集状态行：只进正在看的那个会话，不按会话存。"""
         bar = self.feed.verticalScrollBar()
         follow = self.feed.isHidden() or bar.value() >= bar.maximum() - 4
         self.feed.appendPlainText(line)
         if follow:
             bar.setValue(bar.maximum())
 
-    def log_message(self, who, text, name="", timestamp=None):
-        self._message_count += 1
+    def log_message(self, who, text, name="", timestamp=None, chat=None):
+        """按会话存一份；只有正在看的那个会往显示区里写。"""
+        chat = chat or self._shown
         speaker = (name or "对方") if who == "her" else "我"
         timestamp = timestamp or datetime.now().strftime("%H:%M")
-        self.log(f"{timestamp}  {speaker}\n{text}\n")
+        self.counts[chat] = self.counts.get(chat, 0) + 1
+        lines = self.feeds.setdefault(chat, [])
+        lines.append(f"{timestamp}  {speaker}\n{text}\n")
+        del lines[:-_LOG_LINES]
         if who == "her":
-            self.latest.setText(text if len(text) <= 120 else text[:120] + "…")
-            self.latest.setToolTip(text)
-            self.context.show()
+            self.hers[chat] = text
+        self._add_chat(chat)
+        if chat != self._shown:
+            return
+        self.log(lines[-1])
+        if who == "her":
+            self._show_latest(text)
         self._history_title()
+
+    def _show_latest(self, text):
+        self.latest.setText(text if len(text) <= 120 else text[:120] + "…")
+        self.latest.setToolTip(text)
+        self.context.show()
+
+    def current_chat(self):
+        """界面上正在看的会话（不一定是微信当前开着的那个）。"""
+        return self._shown
+
+    def set_chat(self, title):
+        """微信切到了哪个会话：登记进下拉框并自动跟过去，不触发用户选择的回调。"""
+        if not title:
+            return
+        browsing = self._shown != self._chat  # 正看着的就是它、但之前是「浏览中」：也得重画，把填入放开
+        self._chat = title
+        self._add_chat(title)
+        if title != self._shown or browsing:
+            self.chatBox.blockSignals(True)
+            self.chatBox.setCurrentIndex(self.chatBox.findText(title))
+            self.chatBox.blockSignals(False)
+            self._switch_to(title)
+        self._follow_text()
+
+    def _add_chat(self, title):
+        """新会话自动进下拉框；addItem 添第一条时会自己选中，别让它触发切换。"""
+        if not title or self.chatBox.findText(title) >= 0:
+            return
+        self.chatBox.blockSignals(True)
+        self.chatBox.addItem(title)
+        self.chatBox.blockSignals(False)
+
+    def _on_chat_selected(self, index):
+        """用户自己挑了一个会话：只换看的内容，微信那边不动。"""
+        title = self.chatBox.itemText(index)
+        if title and title != self._shown:
+            self._switch_to(title)
+
+    def _switch_to(self, title):
+        """换正在看的会话：记录、对方最近说、条数、上次的建议一起换过去。"""
+        self._shown = title
+        self.feed.clear()
+        for line in self.feeds.get(title, []):
+            self.feed.appendPlainText(line)
+        her = self.hers.get(title)
+        if her:
+            self._show_latest(her)
+        else:
+            self.context.hide()
+        self._history_title()
+        self._follow_text()
+        self.show_cached(self.result_of(title) if self.result_of else None)
+
+    def _follow_text(self):
+        self.chatFollow.setText(("跟随微信" if self._shown == self._chat else "浏览中") if self._chat else "")
+
+    def show_cached(self, result):
+        """把某个会话上次的结果放回界面；没有就回到空态。浏览别的会话时只给看不给填——
+        微信当前开着的不是它，填进去就串会话了。"""
+        if result:
+            self.show(result)
+        else:
+            self.cands = []
+            self._clear_cards()
+            self.insight.hide()
+            self.referenceNote.hide()
+            self.empty.show()
+            self.updated.setText("")
+            self._empty_text()
+        if self._shown != self._chat:
+            self.invalidate_replies()
+            self.set_status(f"正在浏览「{self._shown}」，只看不填；微信切回它才能用。")
 
     def show(self, result):
         """按推荐顺序展示，按钮始终绑定 candidates 的原始索引。"""
         self.cands = result["candidates"]
         self.set_busy(False)
         self._current = bool(self.cands)
-        for card in self.cards:
-            self.replyBox.removeWidget(card)
-            card.hide()
-            card.deleteLater()
-        self.cards = []
+        self._clear_cards()
         best = result.get("best_index", 0)
         if best not in range(len(self.cands)):
             best = 0
@@ -644,6 +745,13 @@ class Overlay:
             self.set_status("建议已更新，选一句适合你的回复", "success")
         else:
             self.set_status("未生成可用回复，请等待下一条新消息。", "error")
+
+    def _clear_cards(self):
+        for card in self.cards:
+            self.replyBox.removeWidget(card)
+            card.hide()
+            card.deleteLater()
+        self.cards = []
 
     def after(self, ms, fn):
         QTimer.singleShot(ms, fn)

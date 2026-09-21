@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """父进程：只管界面。截图 + OCR 在 app/worker.py 的子进程里跑，队列里收新消息 →
 冒出新的对方消息才调 engine → 悬浮窗给 3 条候选 → 人点「填入」。发送永远手动。静默期零调用。
+上下文、结果、聊天记录都按会话名（子进程 OCR 头部标题得来）分开存，切会话不串味。
 
     pip install rapidocr-onnxruntime numpy windows-capture PySide6-Fluent-Widgets
 OpenRouter key 在独立设置页填写，不用改代码。IDE 里直接 Run。
@@ -18,9 +19,15 @@ from app.fill import fill
 from app.overlay import Overlay
 from core.engine import analyze
 
-history = deque(maxlen=60)  # [(who, text)]，engine 只认 her/me；只是缓冲区，实际喂模型几条由设置里的「参考上下文」决定
-state = {"area": None, "busy": False, "rerun": None, "revision": 0, "hwnd": None}
+# {会话名: {history, result, rev}}：每个会话各自的上下文、上次结果和版本号，互不串味
+# history 里是 [(who, text)]，engine 只认 her/me；只是缓冲区，实际喂模型几条由设置里的「参考上下文」决定
+chats = {}
+state = {"area": None, "busy": False, "rerun": None, "hwnd": None, "chat": ""}
 results = queue.Queue()
+
+
+def chat_of(title):
+    return chats.setdefault(title, {"history": deque(maxlen=60), "result": None, "rev": 0})
 
 
 def fill_reply(text):
@@ -52,16 +59,16 @@ def on_toggle_capture(on):
     capture_on.set()
 
 
-def analyze_bg(msgs, revision):
+def analyze_bg(msgs, title, revision):
     """后台线程只跑网络调用，结果丢队列；UI 只在主线程的 tick 里动（Qt 不能跨线程碰）。"""
     try:
         results.put(("ok", analyze(msgs, settings.relationship(), context=settings.context(),
-                                   provider=settings.draft_provider()), revision))
+                                   provider=settings.draft_provider()), title, revision))
     except Exception as e:
-        results.put(("err", f"分析失败: {e}", revision))
+        results.put(("err", f"分析失败: {e}", title, revision))
 
 
-def start_analyze(msgs):
+def start_analyze(title, msgs):
     if not settings.has_key():
         ov.set_status("请先在设置中配置回复服务", "warning")
         return
@@ -70,7 +77,7 @@ def start_analyze(msgs):
         return
     state["busy"] = True
     ov.set_busy(True)
-    threading.Thread(target=analyze_bg, args=(msgs, state["revision"]), daemon=True).start()
+    threading.Thread(target=analyze_bg, args=(msgs, title, chat_of(title)["rev"]), daemon=True).start()
 
 
 def drain():
@@ -85,6 +92,10 @@ def drain():
         if kind == "area":  # 只是窗口挪了位置，坐标跟着更新，别的什么都不用动
             state["area"] = msg[1]
             continue
+        if kind == "chat":  # 微信切了会话，界面跟过去（用户正浏览别的会话时也跟，微信是准的）
+            state["chat"] = msg[1]
+            ov.set_chat(msg[1])
+            continue
         if kind == "status":  # 单帧识别失败/报错，提示一下就好，别把正在跑的分析和已知坐标清掉
             ov.set_status(msg[1], "warning")
             ov.log(msg[1])
@@ -97,7 +108,8 @@ def drain():
             continue
         if kind == "dead":  # 采集彻底停了（微信关了之类），这才是真的要清状态
             state["area"] = None
-            state["revision"] += 1
+            for c in chats.values():  # 在跑的分析作废，回来的结果不再往界面上贴
+                c["rev"] += 1
             state["rerun"] = None
             ov.invalidate_replies()
             ov.set_busy(False)
@@ -108,20 +120,22 @@ def drain():
                 child.join()
                 child = None
             continue
-        _, new, area = msg
+        _, title, new, area = msg
         state["area"] = area
-        state["revision"] += 1
-        ov.invalidate_replies()
+        chat = chat_of(title)
+        chat["rev"] += 1  # 这个会话有新消息了，它在跑的分析作废
+        if title == ov.current_chat():  # 看的是别的会话就别把人家的候选划掉
+            ov.invalidate_replies()
         for who, name, text in new:
-            history.append((who, text))
-            ov.log_message(who, text, name)
+            chat["history"].append((who, text))
+            ov.log_message(who, text, name, chat=title)
         if new[-1][0] == "her":  # 只有对方最新说话才值得分析
-            msgs = list(history)
+            msgs = list(chat["history"])
             if state["busy"]:
-                state["rerun"] = msgs
+                state["rerun"] = (title, msgs)
                 ov.set_busy(True)
             else:
-                start_analyze(msgs)
+                start_analyze(title, msgs)
         else:
             state["rerun"] = None
             ov.set_busy(False)
@@ -132,17 +146,21 @@ def tick():
     try:
         drain()
         while not results.empty():
-            kind, r, revision = results.get()
+            kind, r, title, revision = results.get()
             state["busy"] = False
             if state["rerun"]:  # 分析期间又来了新消息，接着跑最新的
-                msgs, state["rerun"] = state["rerun"], None
-                start_analyze(msgs)
+                (t, msgs), state["rerun"] = state["rerun"], None
+                start_analyze(t, msgs)
                 continue
-            if revision != state["revision"]:
+            if revision != chat_of(title)["rev"]:  # 这个会话后来又说话了，这份结果过期了
                 ov.set_busy(False)
                 continue
             if kind == "ok":
-                ov.show(r)
+                chat_of(title)["result"] = r  # 先存着；正看着这个会话才立刻贴上去
+                if title == ov.current_chat():
+                    ov.show(r)
+                else:
+                    ov.set_busy(False)
             else:
                 ov.set_busy(False)
                 ov.set_status("生成失败，请检查网络和服务设置；新消息到来后会重试。", "error")
@@ -157,7 +175,8 @@ if __name__ == "__main__":  # Windows 的 spawn 会让子进程重新执行本�
     ctypes.windll.user32.SetProcessDPIAware()
     q = multiprocessing.Queue()
     capture_on = multiprocessing.Event()  # 父子进程共用的开关，置位=采集
-    ov = Overlay(on_fill=fill_reply, on_toggle_capture=on_toggle_capture)
+    ov = Overlay(on_fill=fill_reply, on_toggle_capture=on_toggle_capture,
+                 result_of=lambda t: chats.get(t, {}).get("result"))
     child = None
     try:
         state["hwnd"] = find_wechat_hwnd()

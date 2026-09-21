@@ -17,10 +17,14 @@ from app import settings
 
 _STATES = ("ready", "waiting", "loading", "error", "setup", "settings", "paused")
 
+_CHAT = "kinmo"  # 演示里「微信当前开着的」会话
+# (会话, 谁, 内容, 群里的发言人, 时间)：两个会话，下拉框里都能看到
 _MESSAGES = (
-    ("her", "周六想吃火锅，你有空吗？", "18:42"),
-    ("me", "有空呀，还是上次那家？", "18:43"),
-    ("her", "好呀！六点见怎么样？我好久没吃了 😋", "18:43"),
+    ("白金搬砖小分队", "her", "周末有人去爬山吗", "阿杰", "09:12"),
+    ("白金搬砖小分队", "me", "我有空，几点集合？", "", "09:15"),
+    ("白金搬砖小分队", "her", "八点地铁口见，记得带水", "阿杰", "09:16"),
+    (_CHAT, "me", "有空呀，还是上次那家？", "", "18:43"),
+    (_CHAT, "her", "好呀！六点见怎么样？我好久没吃了 😋", "", "18:43"),
 )
 
 _RESULT = {
@@ -94,7 +98,8 @@ def main() -> int:
                 f"演示模式：已模拟填入「{text}」；未操作微信。", kind="success"
             ))
 
-        ov = Overlay(on_fill=simulate_fill)
+        # 只有当前会话有结果，切到另一个会话就是空态——跟真实情况一致
+        ov = Overlay(on_fill=simulate_fill, result_of=lambda t: _RESULT if t == _CHAT else None)
         ov.win.setWindowTitle("WeChatJev · 界面演示（合成数据）")
 
         if args.state == "setup":
@@ -103,8 +108,9 @@ def main() -> int:
         elif args.state == "waiting":
             ov.set_status("演示模式：等待对方的新消息；当前未连接微信。")
         else:
-            for who, text, timestamp in _MESSAGES:
-                ov.log_message(who, text, timestamp=timestamp)
+            for chat, who, text, name, timestamp in _MESSAGES:
+                ov.log_message(who, text, name, timestamp=timestamp, chat=chat)
+            ov.set_chat(_CHAT)
             ov.show(_RESULT)
             ov.set_status("演示模式：已生成 3 条建议，点击填入仅模拟操作。", kind="success")
             if args.state == "loading":

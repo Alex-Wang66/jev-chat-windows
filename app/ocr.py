@@ -7,6 +7,31 @@ import numpy as np
 from rapidocr_onnxruntime import RapidOCR
 
 
+_ENGINE = None
+
+
+def _engine():
+    """OCR 引擎全进程共用：一个实例 ~40MB，每个会话一个 Reader，不能各带一个。
+    det_limit_type 默认 'min' 会把小图放大到短边 736，裁小反而更慢；必须 'max'。"""
+    global _ENGINE
+    if _ENGINE is None:
+        _ENGINE = RapidOCR(intra_op_num_threads=4, det_limit_type="max", det_limit_side_len=4000)
+    return _ENGINE
+
+
+def read_title(header):
+    """面板头部那一条截图 → 会话名（numpy RGB）。取最靠上的一行，同一行里取最左的
+    （右边是图标按钮，OCR 不出字；下面那行是公告）。群聊的成员数「(422)」去掉，只留名字当 key。
+    认不出返回 ""。一次约 60ms，所以调用方只在头部像素变了时才问。"""
+    res, _ = _engine()(header, use_cls=False)
+    if not res:
+        return ""
+    first = min(res, key=lambda r: r[0][0][1])
+    row = first[0][0][1] + (first[0][2][1] - first[0][0][1])  # 框底：顶在这之上的算同一行
+    text = min((r for r in res if r[0][0][1] < row), key=lambda r: r[0][0][0])[1]
+    return re.sub(r"\s*[（(]\d+[)）]\s*$", "", text.strip())
+
+
 def who_said(chat, box):
     """按 OCR 框里的颜色分类，不看 x 坐标。返回 (谁, 底色, 墨高)：
     绿底 → me；非绿且文字对底色对比度 ≥150 → her；其余（引用块、群里的发言人名、时间戳、系统提示、
@@ -37,9 +62,10 @@ def similar(a, b):
 
 
 class Reader:
+    """一个会话一个 Reader：lh/seen 各自算各自的，切走再切回来不会把旧消息当新的重报一遍。"""
+
     def __init__(self):
-        # det_limit_type 默认 'min' 会把小图放大到短边 736，裁小反而更慢；必须 'max'
-        self.ocr = RapidOCR(intra_op_num_threads=4, det_limit_type="max", det_limit_side_len=4000)
+        self.ocr = _engine()
         self.lh = None  # 正常气泡字高，头一帧定
         self.seen = []  # [(who, name, text)]，累计，封顶 500
 

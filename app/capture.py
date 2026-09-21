@@ -53,11 +53,12 @@ def unminimize(hwnd):
 
 
 def chat_area(full, header_h=60):
-    """消息列表区 (x0, y0, x1, y1, 面板底色)，全靠像素锚点，不写死坐标，深浅主题通用：
+    """消息列表区 (x0, y_top, x1, y_in, 面板底色, y_pane)，全靠像素锚点，不写死坐标，深浅主题通用：
     - 面板底色 = 右半边最常见的颜色（抽样算，全量 np.unique 在 2560 宽的图上要半秒）
     - 面板左/右边界 = 第一/最后一根「底色占比 > 30%」的列（联系人列表是另一种底色，占比 0）
-    - 横向分隔线 = 整行单色且非底色；输入框顶 = 面板 45% 高度以下第一根；
-      公告条下面那根（有的话）= 消息区顶，没有就用 header_h
+    - y_pane = 面板第一行；会话名就印在 y_pane~y_top 这条头部里（公告条也在里面）
+    - 横向分隔线 = 整行单色且非底色；输入框顶 y_in = 面板 45% 高度以下第一根；
+      公告条下面那根（有的话）= 消息区顶 y_top，没有就用 header_h
     认不出（窗口太小 / 拖到一半布局没铺好）返回 None。
     ponytail: 输入框拉高超过面板一半会认错；header_h 按 100% DPI 给的，缩放了按比例调。"""
     H, W = full.shape[:2]
@@ -80,7 +81,7 @@ def chat_area(full, header_h=60):
     y_top = above[-1] if above else y0 + header_h
     if x1 - x0 < 100 or y_in - y_top < 40:
         return None
-    return x0, y_top, x1, y_in, bg
+    return x0, y_top, x1, y_in, bg, y0
 
 
 class Capture:
@@ -106,7 +107,8 @@ class Capture:
             self.shape, self.area = full.shape, chat_area(full)
         if self.area is None:
             return
-        x0, y0, x1, y1, _ = self.area  # 拿上一次的消息区做 diff 就够了，光标闪烁在输入框里，不算变化
+        x0, y0, x1, y1 = self.area[:4]  # 拿上一次的消息区做 diff 就够了，光标闪烁在输入框里，不算变化
+        # ponytail: diff 不含头部——公告条会滚动，带上它就永远停不稳。切会话时消息区必然也变，照样出帧。
         chat = full[y0:y1, x0:x1]
         if self.last is not None and np.array_equal(chat, self.last):
             return
