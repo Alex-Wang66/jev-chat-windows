@@ -108,11 +108,22 @@ class _TitleBar(QWidget):
         super().mouseReleaseEvent(event)
 
 
+class _MainWindow(QWidget):
+    """窗口大小变了就叫 Overlay 重新排布；断点没跨过时 _relayout 自己不做事，这里不用防抖。"""
+    def __init__(self, relayout):
+        super().__init__()
+        self._relayout = relayout
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._relayout(event.size().width(), event.size().height())
+
+
 class _ReplyCard(_Surface):
     def __init__(self, owner, index, recommended=False, number=1, score=None):
         super().__init__(accent=recommended)
         box = QVBoxLayout(self)
-        box.setContentsMargins(16, 12, 16, 12)
+        self.box = box
         box.setSpacing(10)
         top = QHBoxLayout()
         label = "推荐回复" if recommended else f"备选 {number}"
@@ -129,15 +140,19 @@ class _ReplyCard(_Surface):
         bottom = QHBoxLayout()
         bottom.addStretch(1)
         self.fillButton = (PrimaryPushButton if recommended else PushButton)("填入微信", self)
-        self.fillButton.setMinimumWidth(100)
         self.fillButton.setAccessibleName(f"填入{'推荐回复' if recommended else f'备选 {number}'}到微信")
         self.fillButton.clicked.connect(lambda: owner._fill(index))
         bottom.addWidget(self.fillButton)
         box.addLayout(bottom)
+        self.set_compact(owner._compact)
 
     def set_available(self, enabled):
         self.fillButton.setEnabled(enabled)
         self.copyButton.setEnabled(enabled)
+
+    def set_compact(self, compact):
+        self.box.setContentsMargins(12, 8, 12, 8) if compact else self.box.setContentsMargins(16, 12, 16, 12)
+        self.fillButton.setMinimumWidth(80 if compact else 100)
 
 
 class Overlay:
@@ -155,20 +170,23 @@ class Overlay:
         self.cards = []
         self._busy = False
         self._current = False
+        self._compact = None  # 断点模式：None 保证 _relayout 第一次调用必定生效
+        self._pageLayouts = []
+        self._hintLabels = []
         self.feeds = {}  # {会话名: [排好版的记录]}
         self.counts = {}  # {会话名: 消息条数}
         self.hers = {}  # {会话名: 对方最近一句}
         self.targets = {}  # {会话名: ([发言人], 当前回复对象)}
         self._chat = ""  # 微信当前开着的会话
         self._shown = ""  # 界面上正在看的会话（浏览时和上面不一样）
-        self.win = QWidget()
+        self.win = _MainWindow(self._relayout)
         self.win.setObjectName("assistantWindow")
         self.win.setWindowTitle("Jev · 微信回复助手")
         self.win.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.win.setStyleSheet(
             "QWidget#assistantWindow { background: #f5f7f6; border: 1px solid #dce3de; border-radius: 14px; }"
         )
-        self.win.setMinimumWidth(380)
+        self.win.setMinimumWidth(320)
         self.win.setMaximumWidth(640)
         outer = QVBoxLayout(self.win)
         outer.setContentsMargins(1, 1, 1, 1)
@@ -181,9 +199,9 @@ class Overlay:
         name.setFixedWidth(40)
         name.setAttribute(Qt.WA_TransparentForMouseEvents)
         title.addWidget(name)
-        subtitle = _label("微信回复助手", 12, _MUTED)
-        subtitle.setAttribute(Qt.WA_TransparentForMouseEvents)
-        title.addWidget(subtitle, 1)
+        self.subtitle = _label("微信回复助手", 12, _MUTED)
+        self.subtitle.setAttribute(Qt.WA_TransparentForMouseEvents)
+        title.addWidget(self.subtitle, 1)
         self.captureSwitch = SwitchButton(header)
         self.captureSwitch.setOnText("采集中")
         self.captureSwitch.setOffText("已暂停")
@@ -209,9 +227,10 @@ class Overlay:
         footer.addWidget(grip, 0, Qt.AlignBottom)
         outer.addLayout(footer)
         screen = self.app.primaryScreen().availableGeometry()
-        self.win.setMinimumHeight(min(520, screen.height() - 32))
+        self.win.setMinimumHeight(min(360, screen.height() - 32))
         self.win.resize(min(440, screen.width() - 32), min(820, screen.height() - 48))
         self.win.move(screen.right() - self.win.width() - 20, screen.top() + 24)
+        self._relayout(self.win.width(), self.win.height())  # resizeEvent 补不到构造时这一次
         self.set_status("等待新消息" if settings.has_key() else "需要配置回复服务",
                         "idle" if settings.has_key() else "warning")
         self.win.show()
@@ -231,7 +250,31 @@ class Overlay:
         layout.setSpacing(14)
         scroll.setWidget(content)
         self.pages.addWidget(scroll)
+        self._pageLayouts.append(layout)
         return scroll, layout
+
+    def _relayout(self, w, h):
+        """宽度跨过断点才重新摆布局（省事）；高度每次都重算，反正只是设个定高。"""
+        compact = w < 400
+        if compact != self._compact:
+            self._compact = compact
+            self._apply_compact(compact)
+        self.feed.setFixedHeight(max(100, min(240, int(h * 0.25))))
+
+    def _apply_compact(self, compact):
+        """紧凑/常规两套间距和可见性；断点没变时不会被调用。"""
+        self.subtitle.setVisible(not compact)
+        self.captureSwitch.setOnText("" if compact else "采集中")
+        self.captureSwitch.setOffText("" if compact else "已暂停")
+        for label in self._hintLabels:
+            label.setVisible(not compact)
+        self.referenceNote.setVisible(bool(self.cands) and not compact)
+        self._sync_ds_fields()
+        margins = (12, 8, 12, 12) if compact else (20, 8, 20, 12)
+        for layout in self._pageLayouts:
+            layout.setContentsMargins(*margins)
+        for card in self.cards:
+            card.set_compact(compact)
 
     def _build_home(self):
         self.home, body = self._scroll_page()
@@ -247,6 +290,7 @@ class Overlay:
         prefix.setFixedWidth(56)
         chat_row.addWidget(prefix)
         self.chatBox = ComboBox()
+        self.chatBox.setMinimumWidth(0)  # 别让会话名的长度撑开整行，宽度交给 stretch
         self.chatBox.setPlaceholderText("尚未识别到会话")
         self.chatBox.setAccessibleName("当前会话")
         self.chatBox.setToolTip("微信切到哪个会话这里就跟到哪个；也可以自己选一个，只看它的记录和建议")
@@ -265,6 +309,7 @@ class Overlay:
         target_prefix.setFixedWidth(56)
         target_row.addWidget(target_prefix)
         self.targetBox = ComboBox()
+        self.targetBox.setMinimumWidth(0)  # 人名长度不定，别让它撑开整行
         self.targetBox.setAccessibleName("回复对象")
         self.targetBox.setToolTip("三条候选都按这个人来写；不选就跟着最近说话的那位")
         self.targetBox.currentIndexChanged.connect(self._on_target_selected)
@@ -368,6 +413,7 @@ class Overlay:
         relation_label = _label("你们的关系", 13)
         box.addWidget(relation_label)
         self.relationshipBox = ComboBox()
+        self.relationshipBox.setMinimumWidth(0)
         self.relationshipBox.addItems([name for name, value in _RELATIONSHIPS])
         self.relationshipBox.setAccessibleName("你们的关系")
         relation_label.setBuddy(self.relationshipBox)
@@ -379,7 +425,7 @@ class Overlay:
         self.relationshipBox.currentIndexChanged.connect(
             lambda index: self.relEdit.setVisible(_RELATIONSHIPS[index][1] is None)
         )
-        box.addWidget(_label("帮助助手把握称呼、语气和回应分寸。", 12, _MUTED))
+        box.addWidget(self._hint("帮助助手把握称呼、语气和回应分寸。"))
         context_label = _label("参考上下文", 13)
         box.addWidget(context_label)
         self.contextBox = SpinBox()
@@ -387,8 +433,8 @@ class Overlay:
         self.contextBox.setAccessibleName("参考的最近消息条数")
         context_label.setBuddy(self.contextBox)
         box.addWidget(self.contextBox)
-        box.addWidget(_label(
-            "生成和判断时看最近这么多条消息。太少会丢上下文，太多会稀释重点，建议 6–12。", 12, _MUTED
+        box.addWidget(self._hint(
+            "生成和判断时看最近这么多条消息。太少会丢上下文，太多会稀释重点，建议 6–12。"
         ))
         target_row = QHBoxLayout()
         target_row.addWidget(_label("群聊指定回复对象", 13), 1)
@@ -398,8 +444,8 @@ class Overlay:
         self.targetSwitch.setAccessibleName("群聊指定回复对象")
         target_row.addWidget(self.targetSwitch)
         box.addLayout(target_row)
-        box.addWidget(_label(
-            "开了以后群聊里可以选回复给谁，候选会针对 TA 写，填入时可带 @。关了就正常回复。", 12, _MUTED
+        box.addWidget(self._hint(
+            "开了以后群聊里可以选回复给谁，候选会针对 TA 写，填入时可带 @。关了就正常回复。"
         ))
         body.addWidget(preference)
 
@@ -420,10 +466,11 @@ class Overlay:
         key_label.setBuddy(self.keyEdit)
         self.keyEdit.returnPressed.connect(self._save)
         box.addWidget(self.keyEdit)
-        box.addWidget(_label("Jev 判断和排序走 OpenRouter，必填。起草也可以走它。", 12, _MUTED))
+        box.addWidget(self._hint("Jev 判断和排序走 OpenRouter，必填。起草也可以走它。"))
         provider_label = _label("起草模型来源", 13)
         box.addWidget(provider_label)
         self.providerBox = ComboBox()
+        self.providerBox.setMinimumWidth(0)  # 选项文字很长，别让它撑开设置页
         self.providerBox.addItems(["OpenRouter（DeepSeek V3.1，用上面同一个 key）",
                                    "DeepSeek 直连（更快，需要 DeepSeek key）"])
         self.providerBox.setAccessibleName("起草模型来源")
@@ -441,13 +488,11 @@ class Overlay:
         ds_label.setBuddy(self.dsKeyEdit)
         self.dsKeyEdit.returnPressed.connect(self._save)
         box.addWidget(self.dsKeyEdit)
-        ds_hint = _label("platform.deepseek.com 申请。已配置时留空保留当前密钥。", 12, _MUTED)
-        box.addWidget(ds_hint)
-        # 只有选了直连才显示这一组
-        self._dsWidgets = (ds_label, self.dsKeyState, self.dsKeyEdit, ds_hint)
-        self.providerBox.currentIndexChanged.connect(
-            lambda index: [w.setVisible(index == 1) for w in self._dsWidgets]
-        )
+        self.dsHint = _label("platform.deepseek.com 申请。已配置时留空保留当前密钥。", 12, _MUTED)
+        box.addWidget(self.dsHint)
+        # 只有选了直连才显示这一组；dsHint 额外还要看紧凑模式，单独存，不进 _hintLabels
+        self._dsWidgets = (ds_label, self.dsKeyState, self.dsKeyEdit)
+        self.providerBox.currentIndexChanged.connect(lambda index: self._sync_ds_fields())
         body.addWidget(connection)
         self.settingsFeedback = _label("", 13, _GREEN)
         self.settingsFeedback.hide()
@@ -461,9 +506,29 @@ class Overlay:
         self.saveButton.clicked.connect(self._save)
         actions.addWidget(self.saveButton)
         body.addLayout(actions)
-        body.addWidget(_label("保存后用于下一次生成的回复。", 12, _MUTED))
+        body.addWidget(self._hint("保存后用于下一次生成的回复。"))
         body.addStretch(1)
         self._load_settings()
+
+    def _hint(self, text):
+        """设置页字段下面的灰字说明：记下来，紧凑模式一起隐藏。"""
+        label = _label(text, 12, _MUTED)
+        self._hintLabels.append(label)
+        return label
+
+    def _sync_ds_fields(self):
+        """DeepSeek 那组字段：选了直连才显示；说明文字紧凑模式下再多加一条限制。
+        顺带把 providerBox 按钮上的文字按紧凑模式省略——它是 QPushButton，
+        minimumSizeHint 跟 sizeHint 一样是按整段文字算的，不会自动换行/省略，
+        选项文字很长（"OpenRouter（DeepSeek V3.1，用上面同一个 key）"）时会把设置页撑宽。"""
+        deepseek = self.providerBox.currentIndex() == 1
+        for w in self._dsWidgets:
+            w.setVisible(deepseek)
+        self.dsHint.setVisible(deepseek and not self._compact)
+        full = self.providerBox.currentText()
+        if self._compact:
+            full = self.providerBox.fontMetrics().elidedText(full, Qt.ElideRight, 200)
+        self.providerBox.setText(full)
 
     def _load_settings(self):
         relationship = settings.relationship()
@@ -483,8 +548,7 @@ class Overlay:
         self.dsKeyEdit.setPlaceholderText(
             "已配置，留空保留" if settings.has_deepseek_key() else "输入你的 DeepSeek 密钥")
         self.dsKeyState.setText("已配置" if settings.has_deepseek_key() else "未配置")
-        for w in self._dsWidgets:  # setCurrentIndex 没变就不发信号，这里补一次
-            w.setVisible(deepseek)
+        self._sync_ds_fields()  # setCurrentIndex 没变就不发信号，这里补一次
         self.settingsFeedback.hide()
 
     def _save(self):
@@ -813,7 +877,7 @@ class Overlay:
         setCustomStyleSheet(self.tension, qss, qss)
         self.empty.setVisible(not self.cands)
         self.insight.setVisible(bool(self.cands))
-        self.referenceNote.setVisible(bool(self.cands))
+        self.referenceNote.setVisible(bool(self.cands) and not self._compact)
         self.updated.setText(datetime.now().strftime("%H:%M") + " 更新")
         if self.cands:
             self.set_status("建议已更新，选一句适合你的回复", "success")
