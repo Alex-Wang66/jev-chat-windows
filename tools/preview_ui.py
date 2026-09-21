@@ -32,6 +32,7 @@ _RESULT = {
     # 推荐故意放在第二项，方便检查视觉排序和按钮对应关系。
     "best_index": 1,
     "best_reply": "可以呀，周六六点在上次那家见！我也有点馋了 😋",
+    "scores": [0.21, 0.66, 0.13],
     "answers": {
         "literal_question": {"type": "noul", "noul": 0.98},
         "true_intent": {"type": "choice", "choice": "casual_chat"},
@@ -40,7 +41,10 @@ _RESULT = {
         "best_action": {"type": "choice", "choice": "make_plan"},
         "she_needs": {"type": "choice", "choice": "action"},
         "tension_resolved": {"type": "noul", "noul": 0.99},
-        "best_reply": {"type": "choice", "choice": "reply_b"},
+        "best_reply": {
+            "type": "choice", "choice": "reply_b",
+            "probabilities": {"reply_a": 0.21, "reply_b": 0.66, "reply_c": 0.13},
+        },
     },
     "usage": {},
 }

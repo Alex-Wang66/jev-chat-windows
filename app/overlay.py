@@ -109,14 +109,16 @@ class _TitleBar(QWidget):
 
 
 class _ReplyCard(_Surface):
-    def __init__(self, owner, index, recommended=False, number=1):
+    def __init__(self, owner, index, recommended=False, number=1, score=None):
         super().__init__(accent=recommended)
         box = QVBoxLayout(self)
         box.setContentsMargins(16, 12, 16, 12)
         box.setSpacing(10)
         top = QHBoxLayout()
-        top.addWidget(_label("推荐回复" if recommended else f"备选 {number}", 12,
-                             _GREEN if recommended else _MUTED, True))
+        label = "推荐回复" if recommended else f"备选 {number}"
+        if score is not None:
+            label += f" · {round(score * 100)}%"
+        top.addWidget(_label(label, 12, _GREEN if recommended else _MUTED, True))
         self.copyButton = _tool(FIF.COPY, "复制这条回复", lambda: owner._copy(index), self)
         self.copyButton.setFixedSize(24, 24)
         top.addWidget(self.copyButton)
@@ -558,9 +560,14 @@ class Overlay:
         best = result.get("best_index", 0)
         if best not in range(len(self.cands)):
             best = 0
-        order = sorted(range(len(self.cands)), key=lambda i: i != best)
+        raw_scores = result.get("scores") or []
+        scores = [raw_scores[i] if i < len(raw_scores) else None for i in range(len(self.cands))]
+        if not any(scores):  # 全 0/None（旧结果或接口未返回）就不展示百分比
+            scores = [None] * len(self.cands)
+        # 按概率降序排，推荐位（API 给的 choice）强制第一，同分按原索引
+        order = sorted(range(len(self.cands)), key=lambda i: (i != best, -(scores[i] or 0), i))
         for position, index in enumerate(order):
-            card = _ReplyCard(self, index, recommended=index == best, number=position)
+            card = _ReplyCard(self, index, recommended=index == best, number=position, score=scores[index])
             self.replyBox.addWidget(card)
             self.cards.append(card)
         answers = result.get("answers") or {}

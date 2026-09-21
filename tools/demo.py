@@ -53,8 +53,10 @@ def main() -> int:
             print("  " + fmt(name, r["answers"][name]))
 
     print("\n候选（Jev 排序，★ = 推荐）:")
+    scores = r.get("scores")
     for i, c in enumerate(r["candidates"]):
-        print(f"  {'★' if i == r['best_index'] else ' '} {c}")
+        pct = f"  {scores[i]:.0%}" if scores else ""
+        print(f"  {'★' if i == r['best_index'] else ' '} {c}{pct}")
 
     u = r["usage"]
     if u:
