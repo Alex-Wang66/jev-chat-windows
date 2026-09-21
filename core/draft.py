@@ -23,10 +23,13 @@ DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash"  # OpenRouter 上的 DeepSeek V4.
 MAX_RETRIES = 3
 
 # provider -> (url, 默认模型, key 的环境变量名)
+# (url, 默认模型, key 的环境变量名, 请求体里额外要带的字段)
+# V4.1 Flash 默认**开着思考模式**（effort=high，max_tokens 64K）——起草三句聊天回复不需要，慢还贵，两边都显式关掉。
 PROVIDERS = {
-    "openrouter": (CHAT_URL, DEFAULT_MODEL, "OPENROUTER_API_KEY"),
-    # 官方 id：deepseek-flash = DeepSeek-V4.1-Flash（非思考，起草够用）；deepseek-chat 2026-07-24 已下线，只是暂时还被路由
-    "deepseek": ("https://api.deepseek.com/chat/completions", "deepseek-flash", "DEEPSEEK_API_KEY"),
+    "openrouter": (CHAT_URL, DEFAULT_MODEL, "OPENROUTER_API_KEY", {"reasoning": {"enabled": False}}),
+    # 官方 id：deepseek-flash = DeepSeek-V4.1-Flash；deepseek-chat 2026-07-24 已下线，只是暂时还被路由
+    "deepseek": ("https://api.deepseek.com/chat/completions", "deepseek-flash", "DEEPSEEK_API_KEY",
+                 {"thinking": {"type": "disabled"}}),
 }
 
 # 中文写，DeepSeek 跟得更紧。每一条都是冲着「人机感」去的，别随手删。
@@ -146,7 +149,7 @@ def draft_candidates(messages: list, relationship: str, provider: str = "openrou
     reply_to: 群聊里指定回复给谁；None = 正常回复。
     style: 用户自己描述的口吻（设置里的「说话风格」），空就只靠样本模仿。
     provider ∈ PROVIDERS；model=None 用该来源的默认模型。"""
-    url, default_model, env = PROVIDERS[provider]
+    url, default_model, env, extra = PROVIDERS[provider]
     transcript = "\n".join(_line(m) for m in messages[-keep:])
     user = f"relationship: {relationship}\n\n对话（最后一条是最新）:\n{transcript}"
     # 风格样本：me 自己说过的短句，整段对话里捞（不止最近 keep 条）。链接和长段不是风格，扔掉。
@@ -163,7 +166,8 @@ def draft_candidates(messages: list, relationship: str, provider: str = "openrou
     chat = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}]
     # 1.2：DeepSeek 自己推荐的闲聊档位，0.8 出来的话太板正
     body = {"model": model or default_model, "messages": chat, "temperature": 1.2,
-            "stream": False}  # DeepSeek 要显式关；OpenRouter 无所谓
+            "max_tokens": 400,  # 三句话的量；不设的话思考模式下默认 64K
+            "stream": False, **extra}  # stream: DeepSeek 要显式关；OpenRouter 无所谓
     key = _api_key(env)
 
     content = _chat(url, key, body, timeout)
