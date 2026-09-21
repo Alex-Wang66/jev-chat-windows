@@ -35,13 +35,16 @@ def analyze(messages: list, relationship: str, model: str | None = None,
                                   model=model, timeout=timeout, keep=context, reply_to=reply_to)
 
     questions = dict(JUDGE_QUESTIONS)
-    questions.update(build_rank_question(candidates))
+    if len(candidates) >= 2:  # 起草只给了 1 条就没什么可排的，判断题照问
+        questions.update(build_rank_question(candidates))
     result = ask(build_state(messages, relationship, keep=context, reply_to=reply_to),
                  questions, timeout=timeout)
 
     answers = result.get("answers") or {}
     best_key = (answers.get("best_reply") or {}).get("choice")
     best_index = _REPLY_IDX.get(best_key, 0)  # 解析不出就退第一条
+    if best_index >= len(candidates):
+        best_index = 0
 
     probabilities = (answers.get("best_reply") or {}).get("probabilities") or {}
     scores = [0.0, 0.0, 0.0]

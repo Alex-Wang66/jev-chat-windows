@@ -44,58 +44,39 @@ SYSTEM = (
 )
 
 
-def _parse_three(content: str) -> list[str]:
-    """从模型输出里抠出 3 条。先按 JSON 数组,失败再退化按行。"""
+def _parse_candidates(content: str) -> list[str]:
+    """从模型输出里抠候选（最多 3 条，可能不足）。先按 JSON 数组，失败再退化按行。一条都没有才抛。"""
     content = content.strip()
     # 去掉可能的 ```json 围栏
     content = re.sub(r"^```(?:json)?|```$", "", content, flags=re.MULTILINE).strip()
     try:
         arr = json.loads(content)
-        if isinstance(arr, list) and len(arr) >= 3:
-            return [str(x).strip() for x in arr[:3]]
+        if isinstance(arr, list):
+            got = [str(x).strip() for x in arr if str(x).strip()]
+            if got:
+                return got[:3]
     except Exception:
         pass
     # 退化：逐行,去掉行首编号/符号
     lines = [re.sub(r"^\s*(?:\d+[.)、]|[-*])\s*", "", ln).strip().strip('"')
              for ln in content.splitlines() if ln.strip()]
     lines = [ln for ln in lines if ln]
-    if len(lines) >= 3:
+    if lines:
         return lines[:3]
-    raise JevError(f"起草结果解析不出 3 条: {content[:200]!r}")
+    raise JevError(f"起草结果解析不出候选: {content[:200]!r}")
 
 
-def _line(m) -> str:
-    """一条台词：群里有发言人名就用名字打头，其余照旧 her/me。"""
-    if isinstance(m, dict):
-        who, text, name = m.get("from"), m.get("text"), m.get("name")
-    else:
-        who, text = m[0], m[1]
-        name = m[2] if len(m) > 2 else None
-    return f"{name if who == 'her' and name else who}: {text}"
+def _parse_three(content: str) -> list[str]:
+    """严格版：不足 3 条就抛（自测用）。"""
+    got = _parse_candidates(content)
+    if len(got) < 3:
+        raise JevError(f"起草结果解析不出 3 条: {content[:200]!r}")
+    return got
 
 
-def draft_candidates(messages: list, relationship: str, provider: str = "openrouter",
-                     model: str | None = None, timeout: float = 30, keep: int = 10,
-                     reply_to: str | None = None) -> list[str]:
-    """messages: [(from, text)] 或 [(from, text, name)]，from ∈ {her, me}，name = 群里的发言人；
-    只看最近 keep 条。返回 3 条中文候选。
-
-    reply_to: 群聊里指定回复给谁；None = 正常回复。
-    provider ∈ PROVIDERS；model=None 用该来源的默认模型。"""
-    url, default_model, env = PROVIDERS[provider]
-    transcript = "\n".join(_line(m) for m in messages[-keep:])
-    user = f"relationship: {relationship}\n\n对话（最后一条是最新）:\n{transcript}"
-    if reply_to:
-        user += f"\n\n这是群聊。你要回复的是「{reply_to}」的话，三条候选都对 TA 说，不要@别人。"
-    payload = json.dumps({
-        "model": model or default_model,
-        "messages": [{"role": "system", "content": SYSTEM},
-                     {"role": "user", "content": user}],
-        "temperature": 0.8,
-        "stream": False,  # DeepSeek 要显式关；OpenRouter 无所谓
-    }, ensure_ascii=False).encode("utf-8")
-
-    key = _api_key(env)
+def _chat(url: str, key: str, body: dict, timeout: float) -> str:
+    """一次 chat completions 调用，429/529/超时退避重试，返回 content。"""
+    payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
     for attempt in range(MAX_RETRIES + 1):
         req = urllib.request.Request(url, data=payload, method="POST", headers={
             "Authorization": f"Bearer {key}",
@@ -103,8 +84,8 @@ def draft_candidates(messages: list, relationship: str, provider: str = "openrou
         })
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
-            return _parse_three(body["choices"][0]["message"]["content"])
+                data = json.loads(resp.read().decode("utf-8"))
+            return data["choices"][0]["message"]["content"]
         except urllib.error.HTTPError as exc:
             if exc.code in (429, 529) and attempt < MAX_RETRIES:
                 time.sleep(2 ** attempt)
@@ -121,6 +102,53 @@ def draft_candidates(messages: list, relationship: str, provider: str = "openrou
     raise JevError("起草：重试用尽")
 
 
+def _line(m) -> str:
+    """一条台词：群里有发言人名就用名字打头，其余照旧 her/me。"""
+    if isinstance(m, dict):
+        who, text, name = m.get("from"), m.get("text"), m.get("name")
+    else:
+        who, text = m[0], m[1]
+        name = m[2] if len(m) > 2 else None
+    return f"{name if who == 'her' and name else who}: {text}"
+
+
+def draft_candidates(messages: list, relationship: str, provider: str = "openrouter",
+                     model: str | None = None, timeout: float = 30, keep: int = 10,
+                     reply_to: str | None = None) -> list[str]:
+    """messages: [(from, text)] 或 [(from, text, name)]，from ∈ {her, me}，name = 群里的发言人；
+    只看最近 keep 条。返回最多 3 条中文候选（模型两次都给不够时可能少于 3，至少 1）。
+
+    reply_to: 群聊里指定回复给谁；None = 正常回复。
+    provider ∈ PROVIDERS；model=None 用该来源的默认模型。"""
+    url, default_model, env = PROVIDERS[provider]
+    transcript = "\n".join(_line(m) for m in messages[-keep:])
+    user = f"relationship: {relationship}\n\n对话（最后一条是最新）:\n{transcript}"
+    if reply_to:
+        user += f"\n\n这是群聊。你要回复的是「{reply_to}」的话，三条候选都对 TA 说，不要@别人。"
+    user += "\n\n输出恰好 3 条候选，JSON 数组，每条一句。"
+    chat = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}]
+    body = {"model": model or default_model, "messages": chat, "temperature": 0.8,
+            "stream": False}  # DeepSeek 要显式关；OpenRouter 无所谓
+    key = _api_key(env)
+
+    content = _chat(url, key, body, timeout)
+    cands = _parse_candidates(content)
+    if len(cands) < 3:
+        # 模型偶尔只给 1~2 条（V4.1 Flash 实测会把三条揉成一条）。带着它的回答追问一次，要补齐的那几条。
+        need = 3 - len(cands)
+        body["messages"] = chat + [
+            {"role": "assistant", "content": content},
+            {"role": "user", "content": f"只给了 {len(cands)} 条。再给 {need} 条跟上面不一样的候选，"
+                                        f"只输出这 {need} 条的 JSON 数组。"},
+        ]
+        try:
+            extra = _parse_candidates(_chat(url, key, body, timeout))
+        except JevError:
+            extra = []
+        cands += [c for c in extra if c not in cands]
+    return cands[:3]  # 可能仍不足 3 条，下游按实际条数处理
+
+
 if __name__ == "__main__":
     # ponytail: 只测解析器（不联网）。解析是这里唯一会坏的非平凡逻辑。
     assert _parse_three('["a","b","c"]') == ["a", "b", "c"]
@@ -132,4 +160,5 @@ if __name__ == "__main__":
         raise SystemExit("应当抛错")
     except JevError:
         pass
+    assert _parse_candidates('["只有一条"]') == ["只有一条"]
     print("draft._parse_three ok")

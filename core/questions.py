@@ -238,9 +238,9 @@ def build_state(messages: list, relationship: str, keep: int = 10,
 
 def build_rank_question(candidates: list[str]) -> dict:
     """Build the best_reply choice question. criteria values stay in original Chinese."""
-    if len(candidates) != 3:
-        raise ValueError("build_rank_question expects exactly 3 candidate replies")
-    keys = ("reply_a", "reply_b", "reply_c")
+    if not 2 <= len(candidates) <= 3:
+        raise ValueError("build_rank_question expects 2 or 3 candidate replies")
+    keys = ("reply_a", "reply_b", "reply_c")[:len(candidates)]
     return {
         "best_reply": {
             "type": "choice",
