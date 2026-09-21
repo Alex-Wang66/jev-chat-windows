@@ -4,6 +4,8 @@
     set OPENROUTER_API_KEY=...   (Windows)
     export OPENROUTER_API_KEY=...(mac/Linux)
     python tools/demo.py
+
+起草想走 DeepSeek 直连就把下面 PROVIDER 改成 "deepseek"，并设好 DEEPSEEK_API_KEY。
 """
 from __future__ import annotations
 
@@ -23,6 +25,7 @@ MESSAGES = [
     ("her", "你最好是。"),
 ]
 RELATIONSHIP = "romantic partners"
+PROVIDER = "openrouter"  # 或 "deepseek"（起草直连，需要 DEEPSEEK_API_KEY）
 
 
 def fmt(name: str, ans: dict) -> str:
@@ -41,7 +44,7 @@ def main() -> int:
     for w, t in MESSAGES:
         print(f"  {w}: {t}")
     try:
-        r = analyze(MESSAGES, RELATIONSHIP)
+        r = analyze(MESSAGES, RELATIONSHIP, provider=PROVIDER)
     except JevError as e:
         print(f"\n失败: {e}")
         return 1

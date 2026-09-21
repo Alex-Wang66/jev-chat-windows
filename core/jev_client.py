@@ -21,20 +21,21 @@ class JevError(Exception):
 
 
 def redact_secrets(text: str) -> str:
-    """Strip the live key from any string before print or disk write."""
+    """Strip every live key from any string before print or disk write."""
     if not isinstance(text, str):
         text = str(text)
-    key = os.environ.get("OPENROUTER_API_KEY") or ""
-    if key:
-        text = text.replace(key, "[REDACTED]")
+    for env in ("OPENROUTER_API_KEY", "DEEPSEEK_API_KEY"):
+        key = os.environ.get(env) or ""
+        if key:
+            text = text.replace(key, "[REDACTED]")
     return text
 
 
-def _api_key() -> str:
-    key = (os.environ.get("OPENROUTER_API_KEY") or "").strip()
+def _api_key(env: str = "OPENROUTER_API_KEY") -> str:
+    key = (os.environ.get(env) or "").strip()
     if not key:
         raise JevError(
-            "OPENROUTER_API_KEY is not set. Export it in the environment; "
+            f"{env} is not set. Export it in the environment; "
             "do not put the key in a file."
         )
     return key

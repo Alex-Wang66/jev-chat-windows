@@ -17,6 +17,8 @@ _CONFIG = os.path.join(_ROOT, "config.json")
 _DEFAULT_RELATIONSHIP = "romantic partners"
 _DEFAULT_CONTEXT = 10
 _ENV = "OPENROUTER_API_KEY"
+_DEEPSEEK_ENV = "DEEPSEEK_API_KEY"
+_PROVIDERS = ("openrouter", "deepseek")
 
 
 def relationship() -> str:
@@ -38,44 +40,72 @@ def context() -> int:
     return max(3, min(30, n))
 
 
-def _registry_key() -> str:
+def draft_provider() -> str:
+    """起草走哪家：openrouter（默认）或 deepseek 直连。判断/排序永远走 OpenRouter。"""
+    try:
+        with open(_CONFIG, encoding="utf-8") as f:
+            v = json.load(f).get("draft_provider")
+    except (OSError, ValueError):
+        return _PROVIDERS[0]
+    return v if v in _PROVIDERS else _PROVIDERS[0]
+
+
+def _get_key(env_name: str) -> str:
+    """进程环境优先；没有就读注册表并带进进程环境，之后 core/ 里按 os.environ 读就有了。"""
+    v = os.environ.get(env_name, "").strip()
+    if not v:
+        try:
+            import winreg
+
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as k:
+                v = str(winreg.QueryValueEx(k, env_name)[0]).strip()
+        except Exception:  # 非 Windows / 没这个值
+            v = ""
+        if v:
+            os.environ[env_name] = v
+    return v
+
+
+def _set_key(env_name: str, value: str) -> None:
+    """只写进程环境 + HKCU\\Environment，不写任何文件。"""
+    os.environ[env_name] = value
     try:
         import winreg
 
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as k:
-            return str(winreg.QueryValueEx(k, _ENV)[0]).strip()
-    except Exception:  # 非 Windows / 没这个值
-        return ""
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_SET_VALUE) as k:
+            winreg.SetValueEx(k, env_name, 0, winreg.REG_SZ, value)
+        # 广播一下，之后新开的终端/进程就能看到；已经开着的 IDE 看不到也无所谓，启动时会读注册表
+        ctypes.windll.user32.SendMessageTimeoutW(0xFFFF, 0x1A, 0, "Environment", 2, 5000, None)
+    except Exception:
+        pass  # 非 Windows（本机 Mac 开发）走不到，忽略
 
 
 def key() -> str:
-    """进程环境优先；没有就读注册表并带进进程环境，之后 core/ 里按 os.environ 读就有了。"""
-    v = os.environ.get(_ENV, "").strip()
-    if not v:
-        v = _registry_key()
-        if v:
-            os.environ[_ENV] = v
-    return v
+    return _get_key(_ENV)
 
 
 def has_key() -> bool:
     return bool(key())
 
 
-def save(key_text: str | None, relationship_text: str, context_n: int | None = None) -> None:
-    """key 为空/None = 不改当前值。key 只写进程环境 + HKCU\\Environment，不写任何文件。
-    context_n 为 None = 保留原来的参考上下文条数。"""
-    if key_text:
-        os.environ[_ENV] = key_text
-        try:
-            import winreg
+def deepseek_key() -> str:
+    return _get_key(_DEEPSEEK_ENV)
 
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_SET_VALUE) as k:
-                winreg.SetValueEx(k, _ENV, 0, winreg.REG_SZ, key_text)
-            # 广播一下，之后新开的终端/进程就能看到；已经开着的 IDE 看不到也无所谓，启动时会读注册表
-            ctypes.windll.user32.SendMessageTimeoutW(0xFFFF, 0x1A, 0, "Environment", 2, 5000, None)
-        except Exception:
-            pass  # 非 Windows（本机 Mac 开发）走不到，忽略
+
+def has_deepseek_key() -> bool:
+    return bool(deepseek_key())
+
+
+def save(key_text: str | None, relationship_text: str, context_n: int | None = None,
+         deepseek_key_text: str | None = None, provider_text: str | None = None) -> None:
+    """每个参数为空/None = 保留当前值。两个 key 都只写进程环境 + HKCU\\Environment，不写任何文件。"""
+    if key_text:
+        _set_key(_ENV, key_text)
+    if deepseek_key_text:
+        _set_key(_DEEPSEEK_ENV, deepseek_key_text)
     n = context() if context_n is None else max(3, min(30, int(context_n)))
+    # 形参遮住了同名函数，这里直接查表兜底
+    provider = provider_text if provider_text in _PROVIDERS else draft_provider()  # None 或脏值 = 保留原来的
     with open(_CONFIG, "w", encoding="utf-8") as f:
-        json.dump({"relationship": relationship_text, "context": n}, f, ensure_ascii=False)
+        json.dump({"relationship": relationship_text, "context": n, "draft_provider": provider},
+                  f, ensure_ascii=False)

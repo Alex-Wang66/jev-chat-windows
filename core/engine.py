@@ -6,27 +6,30 @@
 from __future__ import annotations
 
 try:
-    from .draft import DEFAULT_MODEL, draft_candidates
+    from .draft import draft_candidates
     from .jev_client import ask
     from .questions import JUDGE_QUESTIONS, build_rank_question, build_state
 except ImportError:
-    from draft import DEFAULT_MODEL, draft_candidates
+    from draft import draft_candidates
     from jev_client import ask
     from questions import JUDGE_QUESTIONS, build_rank_question, build_state
 
 _REPLY_IDX = {"reply_a": 0, "reply_b": 1, "reply_c": 2}
 
 
-def analyze(messages: list, relationship: str,
-            model: str = DEFAULT_MODEL, timeout: float = 30, context: int = 10) -> dict:
+def analyze(messages: list, relationship: str, model: str | None = None,
+            timeout: float = 30, context: int = 10, provider: str = "openrouter") -> dict:
     """messages: [(from, text)] from ∈ {her, me}，最新一条在最后。
     context: 起草和判断各看最近多少条消息（用户设置里的「参考上下文」）。
+    provider: 起草走哪家（openrouter / deepseek 直连）；判断和排序永远走 OpenRouter。
+    model=None 用该来源的默认模型。
 
     返回 {candidates, best_index, best_reply, scores, answers, usage}。
     scores 是每条候选的胜出概率（0~1），取自 best_reply.probabilities，取不到记 0.0。
     只有对方最新说话时才有意义调它——是不是该触发由调用方判断（看 latest_from）。
     """
-    candidates = draft_candidates(messages, relationship, model=model, timeout=timeout, keep=context)
+    candidates = draft_candidates(messages, relationship, provider=provider,
+                                  model=model, timeout=timeout, keep=context)
 
     questions = dict(JUDGE_QUESTIONS)
     questions.update(build_rank_question(candidates))

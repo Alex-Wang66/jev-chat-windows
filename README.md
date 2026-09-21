@@ -46,10 +46,11 @@
 - **绝不自动发送。** 只把文字粘进输入框就停手，不发回车、不点发送按钮。发不发、改不改，你来定。
 - **不碰钱。** 转账、红包、收款相关的界面元素一律不碰。
 - **只有对方的新消息到来才调一次模型。** 静默期零调用——十分钟没人说话就是十分钟零 token。
-- **API key 只进环境变量。** `setx` 写进 Windows 用户环境变量，任何文件里都不出现 key，
-  `config.json` 里只有一个关系设置。
+- **API key 只进环境变量。** `OPENROUTER_API_KEY` 和（选了 DeepSeek 直连才要的）`DEEPSEEK_API_KEY`
+  都由 `setx` 写进 Windows 用户环境变量，任何文件里都不出现 key，也绝不进日志（报错文本一律脱敏）；
+  `config.json` 里只有关系、参考上下文条数和起草来源。
 
-唯一出网的是 `core/` 那几次判断/起草调用（OpenRouter），送出去的是最近若干条对话文本（设置里的「参考上下文」条数，默认 10）和关系设置。OCR 全程离线。
+唯一出网的是 `core/` 那几次判断/起草调用（OpenRouter，起草也可选 DeepSeek 直连），送出去的是最近若干条对话文本（设置里的「参考上下文」条数，默认 10）和关系设置。OCR 全程离线。
 
 ## 工作原理
 
@@ -64,6 +65,16 @@ WGC 截微信窗口（GPU 合成窗口也能截，被遮挡也能截）
 ```
 
 截图和 OCR 跑在独立子进程里（一帧 OCR 250~800ms，放 Qt 主线程界面会僵），父进程只管界面和网络调用。
+
+### 模型
+
+| 环节 | 服务 | 模型 | key |
+| --- | --- | --- | --- |
+| 起草 3 条候选 | OpenRouter（默认） | `deepseek/deepseek-chat-v3.1` | `OPENROUTER_API_KEY` |
+| 起草 3 条候选 | DeepSeek 直连（更快，可选） | `deepseek-chat` | `DEEPSEEK_API_KEY` |
+| 判断 + 排序 | OpenRouter | `typesafe/jev-1.13` | `OPENROUTER_API_KEY` |
+
+起草走哪家在设置里选（「起草模型来源」）；判断和排序永远走 OpenRouter，所以 OpenRouter key 必填。
 
 ### 为什么走 OCR
 
@@ -120,6 +131,7 @@ pyinstaller --noconfirm --clean jev.spec
 - **复制**：卡片右上角的复制按钮，想手动粘到别处就用它。
 - **聊天记录**：底部按钮展开，看 OCR 到底读出了什么，认错了一眼就能发现。
 - **设置**：随时改关系背景、key 和参考上下文条数（生成/判断看最近几条消息），下一次生成立即生效，不用重启。
+  「起草模型来源」可切到 DeepSeek 直连（更快，另填一个 DeepSeek key）；判断和排序仍走 OpenRouter。
 
 几个注意：
 

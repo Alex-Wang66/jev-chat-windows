@@ -55,7 +55,8 @@ def on_toggle_capture(on):
 def analyze_bg(msgs, revision):
     """后台线程只跑网络调用，结果丢队列；UI 只在主线程的 tick 里动（Qt 不能跨线程碰）。"""
     try:
-        results.put(("ok", analyze(msgs, settings.relationship(), context=settings.context()), revision))
+        results.put(("ok", analyze(msgs, settings.relationship(), context=settings.context(),
+                                   provider=settings.draft_provider()), revision))
     except Exception as e:
         results.put(("err", f"分析失败: {e}", revision))
 
@@ -63,6 +64,9 @@ def analyze_bg(msgs, revision):
 def start_analyze(msgs):
     if not settings.has_key():
         ov.set_status("请先在设置中配置回复服务", "warning")
+        return
+    if settings.draft_provider() == "deepseek" and not settings.has_deepseek_key():
+        ov.set_status("选了 DeepSeek 直连但没填 DeepSeek 密钥，去设置里补上", "warning")
         return
     state["busy"] = True
     ov.set_busy(True)

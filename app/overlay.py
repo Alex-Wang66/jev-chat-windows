@@ -365,7 +365,34 @@ class Overlay:
         key_label.setBuddy(self.keyEdit)
         self.keyEdit.returnPressed.connect(self._save)
         box.addWidget(self.keyEdit)
-        box.addWidget(_label("用于生成和分析回复。已配置时，留空会保留当前密钥。", 12, _MUTED))
+        box.addWidget(_label("Jev 判断和排序走 OpenRouter，必填。起草也可以走它。", 12, _MUTED))
+        provider_label = _label("起草模型来源", 13)
+        box.addWidget(provider_label)
+        self.providerBox = ComboBox()
+        self.providerBox.addItems(["OpenRouter（DeepSeek V3.1，用上面同一个 key）",
+                                   "DeepSeek 直连（更快，需要 DeepSeek key）"])
+        self.providerBox.setAccessibleName("起草模型来源")
+        provider_label.setBuddy(self.providerBox)
+        box.addWidget(self.providerBox)
+        ds_heading = QHBoxLayout()
+        ds_label = _label("DeepSeek API 密钥", 13)
+        ds_heading.addWidget(ds_label, 1)
+        self.dsKeyState = _label("", 12, _GREEN)
+        self.dsKeyState.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        ds_heading.addWidget(self.dsKeyState)
+        box.addLayout(ds_heading)
+        self.dsKeyEdit = PasswordLineEdit()
+        self.dsKeyEdit.setAccessibleName("DeepSeek API 密钥")
+        ds_label.setBuddy(self.dsKeyEdit)
+        self.dsKeyEdit.returnPressed.connect(self._save)
+        box.addWidget(self.dsKeyEdit)
+        ds_hint = _label("platform.deepseek.com 申请。已配置时留空保留当前密钥。", 12, _MUTED)
+        box.addWidget(ds_hint)
+        # 只有选了直连才显示这一组
+        self._dsWidgets = (ds_label, self.dsKeyState, self.dsKeyEdit, ds_hint)
+        self.providerBox.currentIndexChanged.connect(
+            lambda index: [w.setVisible(index == 1) for w in self._dsWidgets]
+        )
         body.addWidget(connection)
         self.settingsFeedback = _label("", 13, _GREEN)
         self.settingsFeedback.hide()
@@ -394,12 +421,22 @@ class Overlay:
         self.keyEdit.clear()
         self.keyEdit.setPlaceholderText("已配置，留空保留" if settings.has_key() else "输入你的 API 密钥")
         self.keyState.setText("已配置" if settings.has_key() else "未配置")
+        deepseek = settings.draft_provider() == "deepseek"
+        self.providerBox.setCurrentIndex(1 if deepseek else 0)
+        self.dsKeyEdit.clear()
+        self.dsKeyEdit.setPlaceholderText(
+            "已配置，留空保留" if settings.has_deepseek_key() else "输入你的 DeepSeek 密钥")
+        self.dsKeyState.setText("已配置" if settings.has_deepseek_key() else "未配置")
+        for w in self._dsWidgets:  # setCurrentIndex 没变就不发信号，这里补一次
+            w.setVisible(deepseek)
         self.settingsFeedback.hide()
 
     def _save(self):
         relationship = _RELATIONSHIPS[self.relationshipBox.currentIndex()][1]
         relationship = relationship or self.relEdit.text().strip()
         key = self.keyEdit.text().strip()
+        provider = "deepseek" if self.providerBox.currentIndex() == 1 else "openrouter"
+        deepseek_key = self.dsKeyEdit.text().strip()
         if not relationship:
             self._settings_feedback("请填写关系背景，或选择一个已有选项。", error=True)
             self.relEdit.setFocus()
@@ -408,8 +445,13 @@ class Overlay:
             self._settings_feedback("请先填写 OpenRouter API 密钥。", error=True)
             self.keyEdit.setFocus()
             return
+        if provider == "deepseek" and not deepseek_key and not settings.has_deepseek_key():
+            self._settings_feedback("选了 DeepSeek 直连就得填 DeepSeek API 密钥。", error=True)
+            self.dsKeyEdit.setFocus()
+            return
         try:
-            settings.save(key or None, relationship, self.contextBox.value())
+            settings.save(key or None, relationship, self.contextBox.value(),
+                          deepseek_key or None, provider)
         except Exception:
             self._settings_feedback("保存失败，请检查配置文件是否可写后重试。", error=True)
             return
@@ -437,6 +479,7 @@ class Overlay:
 
     def _back_home(self):
         self.keyEdit.clear()
+        self.dsKeyEdit.clear()
         self.pages.setCurrentWidget(self.home)
         self.settingsButton.setEnabled(True)
 

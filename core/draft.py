@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""起草 3 条候选回复。生成式模型（默认 DeepSeek），走 OpenRouter chat completions。
+"""起草 3 条候选回复。可走 OpenRouter，也可直连 DeepSeek（更快）；两家都是 OpenAI chat 格式。
 
-跟 jev_client 一样：只用 stdlib urllib、复用 OPENROUTER_API_KEY、绝不把 key 打进日志。
-盲起草——不喂 Jev 判断，让生成模型自己读对话；排序交给 Jev。一次请求，省时省钱。
+跟 jev_client 一样：只用 stdlib urllib、key 只从环境变量读、绝不把 key 打进日志。
+盲起草——不喂 Jev 判断，让生成模型自己读对话；排序交给 Jev（永远走 OpenRouter）。
 """
 from __future__ import annotations
 
@@ -21,6 +21,12 @@ except ImportError:
 CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_MODEL = "deepseek/deepseek-chat-v3.1"
 MAX_RETRIES = 3
+
+# provider -> (url, 默认模型, key 的环境变量名)
+PROVIDERS = {
+    "openrouter": (CHAT_URL, DEFAULT_MODEL, "OPENROUTER_API_KEY"),
+    "deepseek": ("https://api.deepseek.com/chat/completions", "deepseek-chat", "DEEPSEEK_API_KEY"),
+}
 
 SYSTEM = (
     "You draft candidate replies for a private chat-assist tool. "
@@ -55,23 +61,27 @@ def _parse_three(content: str) -> list[str]:
     raise JevError(f"起草结果解析不出 3 条: {content[:200]!r}")
 
 
-def draft_candidates(messages: list, relationship: str,
-                     model: str = DEFAULT_MODEL, timeout: float = 30, keep: int = 10) -> list[str]:
-    """messages: [(from, text)] from ∈ {her, me}；只看最近 keep 条。返回 3 条中文候选。"""
+def draft_candidates(messages: list, relationship: str, provider: str = "openrouter",
+                     model: str | None = None, timeout: float = 30, keep: int = 10) -> list[str]:
+    """messages: [(from, text)] from ∈ {her, me}；只看最近 keep 条。返回 3 条中文候选。
+
+    provider ∈ PROVIDERS；model=None 用该来源的默认模型。"""
+    url, default_model, env = PROVIDERS[provider]
     transcript = "\n".join(f"{w}: {t}" for w, t in
                            ((m[0], m[1]) if not isinstance(m, dict) else (m["from"], m["text"])
                             for m in messages[-keep:]))
     user = f"relationship: {relationship}\n\n对话（最后一条是最新）:\n{transcript}"
     payload = json.dumps({
-        "model": model,
+        "model": model or default_model,
         "messages": [{"role": "system", "content": SYSTEM},
                      {"role": "user", "content": user}],
         "temperature": 0.8,
+        "stream": False,  # DeepSeek 要显式关；OpenRouter 无所谓
     }, ensure_ascii=False).encode("utf-8")
 
-    key = _api_key()
+    key = _api_key(env)
     for attempt in range(MAX_RETRIES + 1):
-        req = urllib.request.Request(CHAT_URL, data=payload, method="POST", headers={
+        req = urllib.request.Request(url, data=payload, method="POST", headers={
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json; charset=utf-8",
         })
