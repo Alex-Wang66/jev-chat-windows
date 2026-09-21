@@ -12,6 +12,7 @@ import os
 
 _CONFIG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json")
 _DEFAULT_RELATIONSHIP = "romantic partners"
+_DEFAULT_CONTEXT = 10
 _ENV = "OPENROUTER_API_KEY"
 
 
@@ -22,6 +23,16 @@ def relationship() -> str:
             return json.load(f).get("relationship") or _DEFAULT_RELATIONSHIP
     except (OSError, ValueError):
         return _DEFAULT_RELATIONSHIP
+
+
+def context() -> int:
+    """参考上下文条数：起草和判断各看最近多少条消息。3~30，缺失/脏数据一律退默认值。"""
+    try:
+        with open(_CONFIG, encoding="utf-8") as f:
+            n = int(json.load(f).get("context", _DEFAULT_CONTEXT))
+    except (OSError, ValueError, TypeError):
+        return _DEFAULT_CONTEXT
+    return max(3, min(30, n))
 
 
 def _registry_key() -> str:
@@ -48,8 +59,9 @@ def has_key() -> bool:
     return bool(key())
 
 
-def save(key_text: str | None, relationship_text: str) -> None:
-    """key 为空/None = 不改当前值。key 只写进程环境 + HKCU\\Environment，不写任何文件。"""
+def save(key_text: str | None, relationship_text: str, context_n: int | None = None) -> None:
+    """key 为空/None = 不改当前值。key 只写进程环境 + HKCU\\Environment，不写任何文件。
+    context_n 为 None = 保留原来的参考上下文条数。"""
     if key_text:
         os.environ[_ENV] = key_text
         try:
@@ -61,5 +73,6 @@ def save(key_text: str | None, relationship_text: str) -> None:
             ctypes.windll.user32.SendMessageTimeoutW(0xFFFF, 0x1A, 0, "Environment", 2, 5000, None)
         except Exception:
             pass  # 非 Windows（本机 Mac 开发）走不到，忽略
+    n = context() if context_n is None else max(3, min(30, int(context_n)))
     with open(_CONFIG, "w", encoding="utf-8") as f:
-        json.dump({"relationship": relationship_text}, f, ensure_ascii=False)
+        json.dump({"relationship": relationship_text, "context": n}, f, ensure_ascii=False)

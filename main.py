@@ -18,9 +18,7 @@ from app.fill import fill
 from app.overlay import Overlay
 from core.engine import analyze
 
-HISTORY = 20  # 给模型看最近多少条
-
-history = deque(maxlen=HISTORY)  # [(who, text)]，engine 只认 her/me
+history = deque(maxlen=60)  # [(who, text)]，engine 只认 her/me；只是缓冲区，实际喂模型几条由设置里的「参考上下文」决定
 state = {"area": None, "busy": False, "rerun": None, "revision": 0, "hwnd": None}
 results = queue.Queue()
 
@@ -57,7 +55,7 @@ def on_toggle_capture(on):
 def analyze_bg(msgs, revision):
     """后台线程只跑网络调用，结果丢队列；UI 只在主线程的 tick 里动（Qt 不能跨线程碰）。"""
     try:
-        results.put(("ok", analyze(msgs, settings.relationship()), revision))
+        results.put(("ok", analyze(msgs, settings.relationship(), context=settings.context()), revision))
     except Exception as e:
         results.put(("err", f"分析失败: {e}", revision))
 

@@ -18,18 +18,19 @@ _REPLY_IDX = {"reply_a": 0, "reply_b": 1, "reply_c": 2}
 
 
 def analyze(messages: list, relationship: str,
-            model: str = DEFAULT_MODEL, timeout: float = 30) -> dict:
+            model: str = DEFAULT_MODEL, timeout: float = 30, context: int = 10) -> dict:
     """messages: [(from, text)] from ∈ {her, me}，最新一条在最后。
+    context: 起草和判断各看最近多少条消息（用户设置里的「参考上下文」）。
 
     返回 {candidates, best_index, best_reply, scores, answers, usage}。
     scores 是每条候选的胜出概率（0~1），取自 best_reply.probabilities，取不到记 0.0。
     只有对方最新说话时才有意义调它——是不是该触发由调用方判断（看 latest_from）。
     """
-    candidates = draft_candidates(messages, relationship, model=model, timeout=timeout)
+    candidates = draft_candidates(messages, relationship, model=model, timeout=timeout, keep=context)
 
     questions = dict(JUDGE_QUESTIONS)
     questions.update(build_rank_question(candidates))
-    result = ask(build_state(messages, relationship), questions, timeout=timeout)
+    result = ask(build_state(messages, relationship, keep=context), questions, timeout=timeout)
 
     answers = result.get("answers") or {}
     best_key = (answers.get("best_reply") or {}).get("choice")

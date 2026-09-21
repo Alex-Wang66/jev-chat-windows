@@ -56,11 +56,11 @@ def _parse_three(content: str) -> list[str]:
 
 
 def draft_candidates(messages: list, relationship: str,
-                     model: str = DEFAULT_MODEL, timeout: float = 30) -> list[str]:
-    """messages: [(from, text)] from ∈ {her, me}; 返回 3 条中文候选。"""
+                     model: str = DEFAULT_MODEL, timeout: float = 30, keep: int = 10) -> list[str]:
+    """messages: [(from, text)] from ∈ {her, me}；只看最近 keep 条。返回 3 条中文候选。"""
     transcript = "\n".join(f"{w}: {t}" for w, t in
                            ((m[0], m[1]) if not isinstance(m, dict) else (m["from"], m["text"])
-                            for m in messages[-10:]))
+                            for m in messages[-keep:]))
     user = f"relationship: {relationship}\n\n对话（最后一条是最新）:\n{transcript}"
     payload = json.dumps({
         "model": model,

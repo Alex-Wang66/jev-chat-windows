@@ -204,8 +204,8 @@ JUDGE_QUESTIONS: dict = {
 }
 
 
-def build_state(messages: list, relationship: str) -> dict:
-    """messages: list of (from, text) or [from, text]. from is 'her' or 'me'. Keep last 10."""
+def build_state(messages: list, relationship: str, keep: int = 10) -> dict:
+    """messages: list of (from, text) or [from, text]. from is 'her' or 'me'. Keep last `keep`."""
     cleaned = []
     for item in messages:
         if isinstance(item, dict):
@@ -215,7 +215,7 @@ def build_state(messages: list, relationship: str) -> dict:
         if who not in ("her", "me"):
             raise ValueError(f"message from must be 'her' or 'me', got {who!r}")
         cleaned.append({"from": who, "text": str(text)})
-    cleaned = cleaned[-10:]
+    cleaned = cleaned[-keep:]
     latest_from = cleaned[-1]["from"] if cleaned else "her"
     return {
         "chat": {

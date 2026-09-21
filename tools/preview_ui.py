@@ -59,18 +59,21 @@ def main() -> int:
     args = parser.parse_args()
     target = Path(args.screenshot).expanduser() if args.screenshot else None
 
-    demo_settings = {"has_key": args.state != "setup", "relationship": "friends"}
+    demo_settings = {"has_key": args.state != "setup", "relationship": "friends", "context": 10}
 
-    def save_demo_settings(key, relationship_text):
+    def save_demo_settings(key, relationship_text, context_n=None):
         if key:
             demo_settings["has_key"] = True
         demo_settings["relationship"] = relationship_text
+        if context_n is not None:
+            demo_settings["context"] = context_n
 
     # 在创建 Overlay 前替换设置接口，整个事件循环期间都保持隔离。
     with patch.multiple(
         settings,
         has_key=lambda: demo_settings["has_key"],
         relationship=lambda: demo_settings["relationship"],
+        context=lambda: demo_settings["context"],
         save=save_demo_settings,
     ):
         from PySide6.QtCore import QTimer

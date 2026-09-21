@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 from qfluentwidgets import (
     BodyLabel, CardWidget, ComboBox, FluentIcon as FIF,
     IndeterminateProgressBar, LineEdit, PasswordLineEdit, PlainTextEdit,
-    PrimaryPushButton, PushButton, ScrollArea, SwitchButton, Theme, TransparentToolButton,
+    PrimaryPushButton, PushButton, ScrollArea, SpinBox, SwitchButton, Theme, TransparentToolButton,
     setCustomStyleSheet, setFont, setTheme, setThemeColor,
 )
 
@@ -336,6 +336,16 @@ class Overlay:
             lambda index: self.relEdit.setVisible(_RELATIONSHIPS[index][1] is None)
         )
         box.addWidget(_label("帮助助手把握称呼、语气和回应分寸。", 12, _MUTED))
+        context_label = _label("参考上下文", 13)
+        box.addWidget(context_label)
+        self.contextBox = SpinBox()
+        self.contextBox.setRange(3, 30)
+        self.contextBox.setAccessibleName("参考的最近消息条数")
+        context_label.setBuddy(self.contextBox)
+        box.addWidget(self.contextBox)
+        box.addWidget(_label(
+            "生成和判断时看最近这么多条消息。太少会丢上下文，太多会稀释重点，建议 6–12。", 12, _MUTED
+        ))
         body.addWidget(preference)
 
         connection = _Surface()
@@ -380,6 +390,7 @@ class Overlay:
         self.relationshipBox.setCurrentIndex(index)
         self.relEdit.setText(relationship if _RELATIONSHIPS[index][1] is None else "")
         self.relEdit.setVisible(_RELATIONSHIPS[index][1] is None)
+        self.contextBox.setValue(settings.context())
         self.keyEdit.clear()
         self.keyEdit.setPlaceholderText("已配置，留空保留" if settings.has_key() else "输入你的 API 密钥")
         self.keyState.setText("已配置" if settings.has_key() else "未配置")
@@ -398,7 +409,7 @@ class Overlay:
             self.keyEdit.setFocus()
             return
         try:
-            settings.save(key or None, relationship)
+            settings.save(key or None, relationship, self.contextBox.value())
         except Exception:
             self._settings_feedback("保存失败，请检查配置文件是否可写后重试。", error=True)
             return
