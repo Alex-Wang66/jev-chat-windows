@@ -104,7 +104,6 @@ def save(key_text: str | None, relationship_text: str, context_n: int | None = N
     if deepseek_key_text:
         _set_key(_DEEPSEEK_ENV, deepseek_key_text)
     n = context() if context_n is None else max(3, min(30, int(context_n)))
-    # 形参遮住了同名函数，这里直接查表兜底
     provider = provider_text if provider_text in _PROVIDERS else draft_provider()  # None 或脏值 = 保留原来的
     with open(_CONFIG, "w", encoding="utf-8") as f:
         json.dump({"relationship": relationship_text, "context": n, "draft_provider": provider},
