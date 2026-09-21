@@ -1,4 +1,4 @@
-# wechatjev
+# jev-chat-JARVIS-windows
 
 微信（Windows 4.x）旁挂的回复辅助：本地 OCR 读对方最新消息 → Jev 判断意图/情绪 → 给出 3 条候选回复 →
 一键填入微信输入框。**发送永远手动，程序不替你按发送。**
@@ -72,8 +72,8 @@ WGC 截微信窗口（GPU 合成窗口也能截，被遮挡也能截）
 ## 安装与运行
 
 ```bash
-git clone https://github.com/rezoch340/wechatjev.git
-cd wechatjev
+git clone https://github.com/rezoch340/jev-chat-JARVIS-windows.git
+cd jev-chat-JARVIS-windows
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
