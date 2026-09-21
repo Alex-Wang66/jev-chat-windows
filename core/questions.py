@@ -204,26 +204,36 @@ JUDGE_QUESTIONS: dict = {
 }
 
 
-def build_state(messages: list, relationship: str, keep: int = 10) -> dict:
-    """messages: list of (from, text) or [from, text]. from is 'her' or 'me'. Keep last `keep`."""
+def build_state(messages: list, relationship: str, keep: int = 10,
+                reply_to: str | None = None) -> dict:
+    """messages: (from, text) / (from, text, name) / dict（name 可选）。from 只认 her/me。
+
+    name = 群里的发言人；有 name 就当群聊（chat.is_group）。reply_to = 群里指定的回复对象。
+    """
     cleaned = []
     for item in messages:
         if isinstance(item, dict):
-            who, text = item.get("from"), item.get("text")
+            who, text, name = item.get("from"), item.get("text"), item.get("name")
         else:
             who, text = item[0], item[1]
+            name = item[2] if len(item) > 2 else None
         if who not in ("her", "me"):
             raise ValueError(f"message from must be 'her' or 'me', got {who!r}")
-        cleaned.append({"from": who, "text": str(text)})
+        message = {"from": who, "text": str(text)}
+        if name:
+            message["name"] = str(name)
+        cleaned.append(message)
     cleaned = cleaned[-keep:]
     latest_from = cleaned[-1]["from"] if cleaned else "her"
-    return {
-        "chat": {
-            "relationship": relationship,
-            "messages": cleaned,
-            "latest_from": latest_from,
-        }
+    chat = {
+        "relationship": relationship,
+        "messages": cleaned,
+        "latest_from": latest_from,
+        "is_group": any("name" in m for m in cleaned),
     }
+    if reply_to:
+        chat["reply_to"] = str(reply_to)
+    return {"chat": chat}
 
 
 def build_rank_question(candidates: list[str]) -> dict:

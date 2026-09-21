@@ -37,6 +37,8 @@ SYSTEM = (
     "Write in natural, casual Chinese as real people text on WeChat — short, human, no formal tone, "
     "no emoji spam, no quotation marks around the whole line. "
     "Never propose sending money, transfers, or red packets. "
+    "In a group chat the transcript prefixes each line with the speaker's own name instead of 'her', "
+    "and if one person must be replied to, the user prompt names them. "
     'Output ONLY a JSON array of exactly 3 strings, e.g. ["...","...","..."]. No other text.'
 )
 
@@ -61,16 +63,29 @@ def _parse_three(content: str) -> list[str]:
     raise JevError(f"起草结果解析不出 3 条: {content[:200]!r}")
 
 
-def draft_candidates(messages: list, relationship: str, provider: str = "openrouter",
-                     model: str | None = None, timeout: float = 30, keep: int = 10) -> list[str]:
-    """messages: [(from, text)] from ∈ {her, me}；只看最近 keep 条。返回 3 条中文候选。
+def _line(m) -> str:
+    """一条台词：群里有发言人名就用名字打头，其余照旧 her/me。"""
+    if isinstance(m, dict):
+        who, text, name = m.get("from"), m.get("text"), m.get("name")
+    else:
+        who, text = m[0], m[1]
+        name = m[2] if len(m) > 2 else None
+    return f"{name if who == 'her' and name else who}: {text}"
 
+
+def draft_candidates(messages: list, relationship: str, provider: str = "openrouter",
+                     model: str | None = None, timeout: float = 30, keep: int = 10,
+                     reply_to: str | None = None) -> list[str]:
+    """messages: [(from, text)] 或 [(from, text, name)]，from ∈ {her, me}，name = 群里的发言人；
+    只看最近 keep 条。返回 3 条中文候选。
+
+    reply_to: 群聊里指定回复给谁；None = 正常回复。
     provider ∈ PROVIDERS；model=None 用该来源的默认模型。"""
     url, default_model, env = PROVIDERS[provider]
-    transcript = "\n".join(f"{w}: {t}" for w, t in
-                           ((m[0], m[1]) if not isinstance(m, dict) else (m["from"], m["text"])
-                            for m in messages[-keep:]))
+    transcript = "\n".join(_line(m) for m in messages[-keep:])
     user = f"relationship: {relationship}\n\n对话（最后一条是最新）:\n{transcript}"
+    if reply_to:
+        user += f"\n\n这是群聊。你要回复的是「{reply_to}」的话，三条候选都对 TA 说，不要@别人。"
     payload = json.dumps({
         "model": model or default_model,
         "messages": [{"role": "system", "content": SYSTEM},

@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 from qfluentwidgets import (
-    BodyLabel, CardWidget, ComboBox, FluentIcon as FIF,
+    BodyLabel, CardWidget, CheckBox, ComboBox, FluentIcon as FIF,
     IndeterminateProgressBar, LineEdit, PasswordLineEdit, PlainTextEdit,
     PrimaryPushButton, PushButton, ScrollArea, SpinBox, SwitchButton, Theme, TransparentToolButton,
     setCustomStyleSheet, setFont, setTheme, setThemeColor,
@@ -141,13 +141,15 @@ class _ReplyCard(_Surface):
 
 
 class Overlay:
-    def __init__(self, on_fill, on_toggle_capture=None, result_of=None):
-        """result_of(会话名) → 那个会话上次的结果或 None；切着看别的会话时用它把旧结果放回来。"""
+    def __init__(self, on_fill, on_toggle_capture=None, on_target_change=None, result_of=None):
+        """result_of(会话名) → 那个会话上次的结果或 None；切着看别的会话时用它把旧结果放回来。
+        on_target_change(会话名, 人名) → 用户在群里挑了回复对象。"""
         self.app = QApplication.instance() or QApplication([])
         setTheme(Theme.LIGHT)
         setThemeColor(_GREEN, save=False)
         self.on_fill = on_fill
         self.on_toggle_capture = on_toggle_capture
+        self.on_target_change = on_target_change
         self.result_of = result_of
         self.cands = []
         self.cards = []
@@ -156,6 +158,7 @@ class Overlay:
         self.feeds = {}  # {会话名: [排好版的记录]}
         self.counts = {}  # {会话名: 消息条数}
         self.hers = {}  # {会话名: 对方最近一句}
+        self.targets = {}  # {会话名: ([发言人], 当前回复对象)}
         self._chat = ""  # 微信当前开着的会话
         self._shown = ""  # 界面上正在看的会话（浏览时和上面不一样）
         self.win = QWidget()
@@ -254,6 +257,24 @@ class Overlay:
         self.chatFollow.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         chat_row.addWidget(self.chatFollow)
         body.addLayout(chat_row)
+        self.targetRow = QWidget()  # 只有开了「群聊指定回复对象」且这个会话是群聊才露出来
+        target_row = QHBoxLayout(self.targetRow)
+        target_row.setContentsMargins(0, 0, 0, 0)
+        target_row.setSpacing(8)
+        target_prefix = _label("回复对象", 12, _MUTED)
+        target_prefix.setFixedWidth(56)
+        target_row.addWidget(target_prefix)
+        self.targetBox = ComboBox()
+        self.targetBox.setAccessibleName("回复对象")
+        self.targetBox.setToolTip("三条候选都按这个人来写；不选就跟着最近说话的那位")
+        self.targetBox.currentIndexChanged.connect(self._on_target_selected)
+        target_row.addWidget(self.targetBox, 1)
+        self.atCheck = CheckBox("填入时带 @")
+        self.atCheck.setChecked(True)
+        self.atCheck.setToolTip("填入时在开头加「@名字 」。只是普通文字，微信不会认成真正的 @")
+        target_row.addWidget(self.atCheck)
+        self.targetRow.hide()
+        body.addWidget(self.targetRow)
         self.status = _label("", 12, _MUTED)
         body.addWidget(self.status)
         self.progress = IndeterminateProgressBar()
@@ -276,7 +297,8 @@ class Overlay:
         insight_box.setContentsMargins(14, 12, 14, 12)
         insight_box.setSpacing(7)
         row = QHBoxLayout()
-        row.addWidget(_label("对话参考", 12, _MUTED), 1)
+        self.insightTitle = _label("对话参考", 12, _MUTED)
+        row.addWidget(self.insightTitle, 1)
         self.tension = _label("", 11)
         self.tension.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         row.addWidget(self.tension)
@@ -368,6 +390,17 @@ class Overlay:
         box.addWidget(_label(
             "生成和判断时看最近这么多条消息。太少会丢上下文，太多会稀释重点，建议 6–12。", 12, _MUTED
         ))
+        target_row = QHBoxLayout()
+        target_row.addWidget(_label("群聊指定回复对象", 13), 1)
+        self.targetSwitch = SwitchButton()
+        self.targetSwitch.setOnText("开")
+        self.targetSwitch.setOffText("关")
+        self.targetSwitch.setAccessibleName("群聊指定回复对象")
+        target_row.addWidget(self.targetSwitch)
+        box.addLayout(target_row)
+        box.addWidget(_label(
+            "开了以后群聊里可以选回复给谁，候选会针对 TA 写，填入时可带 @。关了就正常回复。", 12, _MUTED
+        ))
         body.addWidget(preference)
 
         connection = _Surface()
@@ -440,6 +473,7 @@ class Overlay:
         self.relEdit.setText(relationship if _RELATIONSHIPS[index][1] is None else "")
         self.relEdit.setVisible(_RELATIONSHIPS[index][1] is None)
         self.contextBox.setValue(settings.context())
+        self.targetSwitch.setChecked(settings.reply_target())
         self.keyEdit.clear()
         self.keyEdit.setPlaceholderText("已配置，留空保留" if settings.has_key() else "输入你的 API 密钥")
         self.keyState.setText("已配置" if settings.has_key() else "未配置")
@@ -473,11 +507,13 @@ class Overlay:
             return
         try:
             settings.save(key or None, relationship, self.contextBox.value(),
-                          deepseek_key or None, provider)
+                          deepseek_key or None, provider,
+                          reply_target_on=self.targetSwitch.isChecked())
         except Exception:
             self._settings_feedback("保存失败，请检查配置文件是否可写后重试。", error=True)
             return
         self._load_settings()
+        self._render_targets()  # 开关刚改过，回到首页时这一行该显该藏得重算一次
         self._settings_feedback("设置已保存，将用于下一次回复。")
         self.setupButton.hide()
         if not self.cands and not self._busy:
@@ -684,7 +720,43 @@ class Overlay:
             self.context.hide()
         self._history_title()
         self._follow_text()
+        self._render_targets()
         self.show_cached(self.result_of(title) if self.result_of else None)
+
+    def set_targets(self, chat, senders, current):
+        """某个会话的发言人名单（最近的在前）和当前回复对象；正看着它才重画。"""
+        self.targets[chat] = (list(senders), current)
+        if chat == self._shown:
+            self._render_targets()
+
+    def _render_targets(self):
+        """开关关着、或这个会话没有发言人（单聊），这一行就不出现。
+        重填下拉框时屏蔽信号，别把自己的填充当成用户挑的。"""
+        senders, current = self.targets.get(self._shown, ([], None))
+        visible = bool(senders) and settings.reply_target()
+        self.targetRow.setVisible(visible)
+        if not visible:
+            return
+        self.targetBox.blockSignals(True)
+        self.targetBox.clear()
+        self.targetBox.addItems(senders)
+        self.targetBox.setCurrentIndex(senders.index(current) if current in senders else 0)
+        self.targetBox.blockSignals(False)
+
+    def _on_target_selected(self, index):
+        """用户挑了回复对象。浏览别的会话时改的就是那个会话的对象——记录、候选也都按会话走，口径一致。"""
+        name = self.targetBox.itemText(index)
+        if not name:
+            return
+        senders, _ = self.targets.get(self._shown, ([], None))
+        self.targets[self._shown] = (senders, name)
+        self.set_status(f"按「{name}」重新生成…", "busy")
+        if self.on_target_change:
+            self.on_target_change(self._shown, name)
+
+    def at_prefix_enabled(self):
+        """填入时要不要带「@名字 」前缀（只记在界面上，不落盘）。"""
+        return self.atCheck.isChecked()
 
     def _follow_text(self):
         self.chatFollow.setText(("跟随微信" if self._shown == self._chat else "浏览中") if self._chat else "")
@@ -725,6 +797,8 @@ class Overlay:
             card = _ReplyCard(self, index, recommended=index == best, number=position, score=scores[index])
             self.replyBox.addWidget(card)
             self.cards.append(card)
+        reply_to = result.get("reply_to")
+        self.insightTitle.setText(f"对话参考 · 回复给 {reply_to}" if reply_to else "对话参考")
         answers = result.get("answers") or {}
         self.summary.setText("建议：" + _choice(answers, "best_action"))
         self.intent.setText("可能意图 · " + _choice(answers, "true_intent") +

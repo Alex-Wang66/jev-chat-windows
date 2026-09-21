@@ -19,20 +19,35 @@ from app.fill import fill
 from app.overlay import Overlay
 from core.engine import analyze
 
-# {会话名: {history, result, rev}}：每个会话各自的上下文、上次结果和版本号，互不串味
-# history 里是 [(who, text)]，engine 只认 her/me；只是缓冲区，实际喂模型几条由设置里的「参考上下文」决定
+# {会话名: {history, result, rev, target, senders}}：每个会话各自的上下文、上次结果和版本号，互不串味
+# history 里是 [(who, text, name)]，engine 只认 her/me，name 是群里的发言人（单聊/自己说的是 None）；
+# 只是缓冲区，实际喂模型几条由设置里的「参考上下文」决定
+# senders：这个群里发过言的人，去重、最近的排最前；target：用户挑的回复对象（None = 跟着最近那个走）
 chats = {}
 state = {"area": None, "busy": False, "rerun": None, "hwnd": None, "chat": ""}
 results = queue.Queue()
 
 
 def chat_of(title):
-    return chats.setdefault(title, {"history": deque(maxlen=60), "result": None, "rev": 0})
+    return chats.setdefault(title, {"history": deque(maxlen=60), "result": None, "rev": 0,
+                                    "target": None, "senders": []})
+
+
+def target_of(title):
+    """这个会话现在的回复对象：用户挑过且人还在就用它，否则用最近说话的那个；单聊没有发言人 → None。"""
+    chat = chat_of(title)
+    if chat["target"] in chat["senders"]:
+        return chat["target"]
+    return chat["senders"][0] if chat["senders"] else None
 
 
 def fill_reply(text):
     if state["area"] is None or state["hwnd"] is None:  # 子进程重开过，hwnd 可能换了，用最新的
         raise RuntimeError("微信输入区域尚不可用")
+    if settings.reply_target() and ov.at_prefix_enabled():
+        target = target_of(ov.current_chat())  # 填进去的是界面上正看着的那个会话的对象
+        if target:
+            text = f"@{target} " + text  # 纯文本，微信不认成真正的 @，只是让群里看得出在跟谁说
     fill(state["hwnd"], state["area"], text)
 
 
@@ -59,11 +74,12 @@ def on_toggle_capture(on):
     capture_on.set()
 
 
-def analyze_bg(msgs, title, revision):
+def analyze_bg(msgs, title, revision, reply_to=None):
     """后台线程只跑网络调用，结果丢队列；UI 只在主线程的 tick 里动（Qt 不能跨线程碰）。"""
     try:
         results.put(("ok", analyze(msgs, settings.relationship(), context=settings.context(),
-                                   provider=settings.draft_provider()), title, revision))
+                                   provider=settings.draft_provider(), reply_to=reply_to),
+                     title, revision))
     except Exception as e:
         results.put(("err", f"分析失败: {e}", title, revision))
 
@@ -77,7 +93,23 @@ def start_analyze(title, msgs):
         return
     state["busy"] = True
     ov.set_busy(True)
-    threading.Thread(target=analyze_bg, args=(msgs, title, chat_of(title)["rev"]), daemon=True).start()
+    reply_to = target_of(title) if settings.reply_target() else None  # 开关关着就是今天的行为
+    threading.Thread(target=analyze_bg, args=(msgs, title, chat_of(title)["rev"], reply_to),
+                     daemon=True).start()
+
+
+def on_target_change(title, name):
+    """用户挑了回复对象：记下来，这个会话里有对方的话就照新对象重跑一次。"""
+    chat = chat_of(title)
+    chat["target"] = name
+    msgs = list(chat["history"])
+    if not any(m[0] == "her" for m in msgs):
+        return
+    if state["busy"]:
+        state["rerun"] = (title, msgs)
+        ov.set_busy(True)
+    else:
+        start_analyze(title, msgs)
 
 
 def drain():
@@ -127,8 +159,13 @@ def drain():
         if title == ov.current_chat():  # 看的是别的会话就别把人家的候选划掉
             ov.invalidate_replies()
         for who, name, text in new:
-            chat["history"].append((who, text))
+            chat["history"].append((who, text, name))
             ov.log_message(who, text, name, chat=title)
+            if who == "her" and name:  # 群里发过言的人，去重后最近的排最前
+                if name in chat["senders"]:
+                    chat["senders"].remove(name)
+                chat["senders"].insert(0, name)
+        ov.set_targets(title, chat["senders"], target_of(title))  # 显不显示这一行由悬浮窗按开关决定
         if new[-1][0] == "her":  # 只有对方最新说话才值得分析
             msgs = list(chat["history"])
             if state["busy"]:
@@ -176,6 +213,7 @@ if __name__ == "__main__":  # Windows 的 spawn 会让子进程重新执行本�
     q = multiprocessing.Queue()
     capture_on = multiprocessing.Event()  # 父子进程共用的开关，置位=采集
     ov = Overlay(on_fill=fill_reply, on_toggle_capture=on_toggle_capture,
+                 on_target_change=on_target_change,
                  result_of=lambda t: chats.get(t, {}).get("result"))
     child = None
     try:

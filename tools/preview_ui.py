@@ -17,15 +17,18 @@ from app import settings
 
 _STATES = ("ready", "waiting", "loading", "error", "setup", "settings", "paused")
 
-_CHAT = "kinmo"  # 演示里「微信当前开着的」会话
+_CHAT = "白金搬砖小分队"  # 演示里「微信当前开着的」会话：用群聊，回复对象那一行才看得见
 # (会话, 谁, 内容, 群里的发言人, 时间)：两个会话，下拉框里都能看到
 _MESSAGES = (
     ("白金搬砖小分队", "her", "周末有人去爬山吗", "阿杰", "09:12"),
     ("白金搬砖小分队", "me", "我有空，几点集合？", "", "09:15"),
+    ("白金搬砖小分队", "her", "我也去，带上我一个", "陈与小金", "09:15"),
     ("白金搬砖小分队", "her", "八点地铁口见，记得带水", "阿杰", "09:16"),
     (_CHAT, "me", "有空呀，还是上次那家？", "", "18:43"),
     (_CHAT, "her", "好呀！六点见怎么样？我好久没吃了 😋", "", "18:43"),
 )
+_GROUP = "白金搬砖小分队"
+_SENDERS = ("阿杰", "陈与小金")  # 最近说话的排最前，跟 main.py 那边一个口径
 
 _RESULT = {
     "candidates": [
@@ -51,6 +54,7 @@ _RESULT = {
         },
     },
     "usage": {},
+    "reply_to": "阿杰",  # 跟 _SENDERS[0] 一致，让「回复给 …」那行在演示里看得见
 }
 
 
@@ -64,10 +68,10 @@ def main() -> int:
     target = Path(args.screenshot).expanduser() if args.screenshot else None
 
     demo_settings = {"has_key": args.state != "setup", "relationship": "friends", "context": 10,
-                     "has_deepseek_key": False, "draft_provider": "openrouter"}
+                     "has_deepseek_key": False, "draft_provider": "openrouter", "reply_target": True}
 
     def save_demo_settings(key, relationship_text, context_n=None,
-                           deepseek_key_text=None, draft_provider=None):
+                           deepseek_key_text=None, draft_provider=None, reply_target_on=None):
         if key:
             demo_settings["has_key"] = True
         demo_settings["relationship"] = relationship_text
@@ -77,6 +81,8 @@ def main() -> int:
             demo_settings["has_deepseek_key"] = True
         if draft_provider is not None:
             demo_settings["draft_provider"] = draft_provider
+        if reply_target_on is not None:
+            demo_settings["reply_target"] = bool(reply_target_on)
 
     # 在创建 Overlay 前替换设置接口，整个事件循环期间都保持隔离。
     with patch.multiple(
@@ -87,6 +93,7 @@ def main() -> int:
         deepseek_key=lambda: "",
         has_deepseek_key=lambda: demo_settings["has_deepseek_key"],
         draft_provider=lambda: demo_settings["draft_provider"],
+        reply_target=lambda: demo_settings["reply_target"],
         save=save_demo_settings,
     ):
         from PySide6.QtCore import QTimer
@@ -110,6 +117,7 @@ def main() -> int:
         else:
             for chat, who, text, name, timestamp in _MESSAGES:
                 ov.log_message(who, text, name, timestamp=timestamp, chat=chat)
+            ov.set_targets(_GROUP, _SENDERS, _SENDERS[0])  # 群聊才有回复对象这一行
             ov.set_chat(_CHAT)
             ov.show(_RESULT)
             ov.set_status("演示模式：已生成 3 条建议，点击填入仅模拟操作。", kind="success")
