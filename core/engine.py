@@ -19,12 +19,13 @@ _REPLY_IDX = {"reply_a": 0, "reply_b": 1, "reply_c": 2}
 
 def analyze(messages: list, relationship: str, model: str | None = None,
             timeout: float = 30, context: int = 10, provider: str = "openrouter",
-            reply_to: str | None = None) -> dict:
+            reply_to: str | None = None, style: str = "") -> dict:
     """messages: [(from, text)] from ∈ {her, me}，最新一条在最后；
     群聊里可以带第三项 name（说这句话的人），单聊不带。
     context: 起草和判断各看最近多少条消息（用户设置里的「参考上下文」）。
     provider: 起草走哪家（openrouter / deepseek 直连）；判断和排序永远走 OpenRouter。
     reply_to: 群聊里指定回复给谁；None = 正常回复。
+    style: 用户自己描述的说话风格，只影响起草。
     model=None 用该来源的默认模型。
 
     返回 {candidates, best_index, best_reply, scores, answers, usage, reply_to}。
@@ -32,7 +33,8 @@ def analyze(messages: list, relationship: str, model: str | None = None,
     只有对方最新说话时才有意义调它——是不是该触发由调用方判断（看 latest_from）。
     """
     candidates = draft_candidates(messages, relationship, provider=provider,
-                                  model=model, timeout=timeout, keep=context, reply_to=reply_to)
+                                  model=model, timeout=timeout, keep=context, reply_to=reply_to,
+                                  style=style)
 
     questions = dict(JUDGE_QUESTIONS)
     if len(candidates) >= 2:  # 起草只给了 1 条就没什么可排的，判断题照问

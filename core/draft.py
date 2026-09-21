@@ -29,25 +29,31 @@ PROVIDERS = {
     "deepseek": ("https://api.deepseek.com/chat/completions", "deepseek-flash", "DEEPSEEK_API_KEY"),
 }
 
+# 中文写，DeepSeek 跟得更紧。每一条都是冲着「人机感」去的，别随手删。
 SYSTEM = (
-    "You draft candidate replies for a private chat-assist tool. "
-    "The user is the speaker 'me'; 'her' is the other person (any gender). "
-    "Read the whole thread, then write EXACTLY 3 candidate next messages that 'me' could send. "
-    "Make the three genuinely different in approach (e.g. one warm/acknowledging, "
-    "one that takes responsibility or explains, one that offers a concrete next step). "
-    "Write in natural, casual Chinese as real people text on WeChat — short, human, no formal tone, "
-    "no emoji spam, no quotation marks around the whole line. "
-    "Never propose sending money, transfers, or red packets. "
-    "In a group chat the transcript prefixes each line with the speaker's own name instead of 'her', "
-    "and if one person must be replied to, the user prompt names them. "
-    'Output ONLY a JSON array of exactly 3 strings, e.g. ["...","...","..."]. No other text.'
+    "你是「me」本人，正在微信里打字。不是助手，不是客服，不是在写作文。\n"
+    "读完整段对话，写 3 条 me 接下来可能发出去的消息。\n"
+    "硬规则：\n"
+    "- 不总结、不复述对方的话，也不解释自己为什么这么回；\n"
+    "- 不用「首先」「其次」「另外」「总之」；不用「亲」「您」「希望」「祝」「加油哦」这类客套；\n"
+    "- 不排比、不对仗、不凑三段式；\n"
+    "- 句尾别习惯性加句号，能不加标点就不加；感叹号和 emoji 只有 me 自己平时用才用；\n"
+    "- 允许不完整的句子、口头语、长短错落；别每条都以「好」「嗯」开头；\n"
+    "- 三条不是「温暖版／负责版／行动版」的模板，是同一个人在三个心情下随手打的，"
+    "长短不一，其中一条可以很短（几个字）。\n"
+    "风格：优先模仿 me 在对话里的用词、句长、标点和语气词习惯（下面会给样本）；"
+    "对方是谁、什么关系看用户提示。群聊里每行用发言人自己的名字打头，指定了回复对象就只对 TA 说。\n"
+    "安全：绝不提转账、红包、借钱。\n"
+    "输出：只输出一个 JSON 数组，恰好 3 个字符串，别的什么都别写。"
 )
 
 
 def _clean(x: str) -> str:
-    """剥掉一条候选两端的括号/引号/编号/逗号——模型偶尔一行给一个 ["…"]，或者整条带引号。"""
+    """剥掉一条候选两端的括号/引号/编号/逗号——模型偶尔一行给一个 ["…"]，或者整条带引号。
+    末尾的句号也去掉（微信里很少有人用句号收尾）；？！～ 照留，那是语气。"""
     x = re.sub(r"^\s*(?:\d+[.)、]|[-*])\s*", "", x.strip())
-    return x.strip(" \t[]\"'“”‘’,，")
+    x = x.strip(" \t[]\"'“”‘’,，")
+    return x[:-1] if x.endswith("。") else x
 
 
 def _parse_candidates(content: str) -> list[str]:
@@ -132,20 +138,30 @@ def _line(m) -> str:
 
 def draft_candidates(messages: list, relationship: str, provider: str = "openrouter",
                      model: str | None = None, timeout: float = 30, keep: int = 10,
-                     reply_to: str | None = None) -> list[str]:
+                     reply_to: str | None = None, style: str = "") -> list[str]:
     """messages: [(from, text)] 或 [(from, text, name)]，from ∈ {her, me}，name = 群里的发言人；
     只看最近 keep 条。返回最多 3 条中文候选（模型两次都给不够时可能少于 3，至少 1）。
 
     reply_to: 群聊里指定回复给谁；None = 正常回复。
+    style: 用户自己描述的口吻（设置里的「说话风格」），空就只靠样本模仿。
     provider ∈ PROVIDERS；model=None 用该来源的默认模型。"""
     url, default_model, env = PROVIDERS[provider]
     transcript = "\n".join(_line(m) for m in messages[-keep:])
     user = f"relationship: {relationship}\n\n对话（最后一条是最新）:\n{transcript}"
+    # 风格样本：me 自己说过的短句，整段对话里捞（不止最近 keep 条）。链接和长段不是风格，扔掉。
+    said = [str((m.get("text") if isinstance(m, dict) else m[1]) or "").strip()
+            for m in messages if (m.get("from") if isinstance(m, dict) else m[0]) == "me"]
+    samples = [t for t in said if t and len(t) <= 60 and "http" not in t][-12:]
+    if len(samples) >= 2:
+        user += "\n\n我平时是这么说话的（模仿用词、长短、标点习惯）：\n" + "\n".join(samples)
+    if style.strip():
+        user += f"\n\n我对自己口吻的描述：{style.strip()}"
     if reply_to:
         user += f"\n\n这是群聊。你要回复的是「{reply_to}」的话，三条候选都对 TA 说，不要@别人。"
     user += "\n\n输出恰好 3 条候选，JSON 数组，每条一句。"
     chat = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}]
-    body = {"model": model or default_model, "messages": chat, "temperature": 0.8,
+    # 1.2：DeepSeek 自己推荐的闲聊档位，0.8 出来的话太板正
+    body = {"model": model or default_model, "messages": chat, "temperature": 1.2,
             "stream": False}  # DeepSeek 要显式关；OpenRouter 无所谓
     key = _api_key(env)
 
@@ -183,4 +199,6 @@ if __name__ == "__main__":
     assert _parse_candidates('1. ["甲"]\n2. "乙"\n3. 丙') == ["甲", "乙", "丙"]
     assert _parse_candidates('["a"], ["b"], ["c"]') == ["a", "b", "c"]
     assert _parse_candidates('他说"明天见"，我回：好') == ['他说"明天见"，我回：好']
+    # 结尾的句号扒掉，？！～ 留着
+    assert _parse_three('["知道了。","真的吗？","好～"]') == ["知道了", "真的吗？", "好～"]
     print("draft._parse_three ok")

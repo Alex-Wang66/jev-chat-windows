@@ -37,6 +37,14 @@ def context() -> int:
         return _DEFAULT_CONTEXT
     return max(3, min(30, n))
 
+def style() -> str:
+    """用户自己描述的说话风格（可选，自由文本），只喂给起草模型。默认空 = 只照着最近的消息模仿。"""
+    try:
+        with open(_CONFIG, encoding="utf-8") as f:
+            return str(json.load(f).get("style") or "")
+    except (OSError, ValueError):
+        return ""
+
 def draft_provider() -> str:
     """起草走哪家：openrouter（默认）或 deepseek 直连。判断/排序永远走 OpenRouter。"""
     try:
@@ -96,7 +104,7 @@ def has_deepseek_key() -> bool:
 
 def save(key_text: str | None, relationship_text: str, context_n: int | None = None,
          deepseek_key_text: str | None = None, provider_text: str | None = None,
-         reply_target_on: bool | None = None) -> None:
+         reply_target_on: bool | None = None, style_text: str | None = None) -> None:
     """每个参数为空/None = 保留当前值。两个 key 都只写进程环境 + HKCU\\Environment，不写任何文件。"""
     if key_text:
         _set_key(_ENV, key_text)
@@ -105,6 +113,7 @@ def save(key_text: str | None, relationship_text: str, context_n: int | None = N
     n = context() if context_n is None else max(3, min(30, int(context_n)))
     provider = provider_text if provider_text in _PROVIDERS else draft_provider()  # None 或脏值 = 保留原来的
     target = reply_target() if reply_target_on is None else bool(reply_target_on)
+    style_v = style() if style_text is None else str(style_text).strip()  # 空串 = 清掉
     with open(_CONFIG, "w", encoding="utf-8") as f:
         json.dump({"relationship": relationship_text, "context": n, "draft_provider": provider,
-                   "reply_target": target}, f, ensure_ascii=False)
+                   "reply_target": target, "style": style_v}, f, ensure_ascii=False)

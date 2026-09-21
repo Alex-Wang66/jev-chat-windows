@@ -426,6 +426,14 @@ class Overlay:
             lambda index: self.relEdit.setVisible(_RELATIONSHIPS[index][1] is None)
         )
         box.addWidget(self._hint("帮助助手把握称呼、语气和回应分寸。"))
+        style_label = _label("说话风格（可选）", 13)
+        box.addWidget(style_label)
+        self.styleEdit = LineEdit()
+        self.styleEdit.setPlaceholderText("例如：话少、不用标点、偶尔用 doge、不说客套话")
+        self.styleEdit.setAccessibleName("说话风格")
+        style_label.setBuddy(self.styleEdit)
+        box.addWidget(self.styleEdit)
+        box.addWidget(self._hint("候选本来就照着你最近发的消息模仿；这里可以再补一句你自己的口吻。"))
         context_label = _label("参考上下文", 13)
         box.addWidget(context_label)
         self.contextBox = SpinBox()
@@ -537,6 +545,7 @@ class Overlay:
         self.relationshipBox.setCurrentIndex(index)
         self.relEdit.setText(relationship if _RELATIONSHIPS[index][1] is None else "")
         self.relEdit.setVisible(_RELATIONSHIPS[index][1] is None)
+        self.styleEdit.setText(settings.style())
         self.contextBox.setValue(settings.context())
         self.targetSwitch.setChecked(settings.reply_target())
         self.keyEdit.clear()
@@ -572,7 +581,8 @@ class Overlay:
         try:
             settings.save(key or None, relationship, self.contextBox.value(),
                           deepseek_key or None, provider,
-                          reply_target_on=self.targetSwitch.isChecked())
+                          reply_target_on=self.targetSwitch.isChecked(),
+                          style_text=self.styleEdit.text().strip())
         except Exception:
             self._settings_feedback("保存失败，请检查配置文件是否可写后重试。", error=True)
             return

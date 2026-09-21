@@ -68,10 +68,12 @@ def main() -> int:
     target = Path(args.screenshot).expanduser() if args.screenshot else None
 
     demo_settings = {"has_key": args.state != "setup", "relationship": "friends", "context": 10,
-                     "has_deepseek_key": False, "draft_provider": "openrouter", "reply_target": True}
+                     "has_deepseek_key": False, "draft_provider": "openrouter", "reply_target": True,
+                     "style": "话少，基本不用标点，急了才发感叹号"}
 
     def save_demo_settings(key, relationship_text, context_n=None,
-                           deepseek_key_text=None, draft_provider=None, reply_target_on=None):
+                           deepseek_key_text=None, draft_provider=None, reply_target_on=None,
+                           style_text=None):
         if key:
             demo_settings["has_key"] = True
         demo_settings["relationship"] = relationship_text
@@ -83,6 +85,8 @@ def main() -> int:
             demo_settings["draft_provider"] = draft_provider
         if reply_target_on is not None:
             demo_settings["reply_target"] = bool(reply_target_on)
+        if style_text is not None:
+            demo_settings["style"] = style_text
 
     # 在创建 Overlay 前替换设置接口，整个事件循环期间都保持隔离。
     with patch.multiple(
@@ -94,6 +98,7 @@ def main() -> int:
         has_deepseek_key=lambda: demo_settings["has_deepseek_key"],
         draft_provider=lambda: demo_settings["draft_provider"],
         reply_target=lambda: demo_settings["reply_target"],
+        style=lambda: demo_settings["style"],
         save=save_demo_settings,
     ):
         from PySide6.QtCore import QTimer

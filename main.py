@@ -78,7 +78,8 @@ def analyze_bg(msgs, title, revision, reply_to=None):
     """后台线程只跑网络调用，结果丢队列；UI 只在主线程的 tick 里动（Qt 不能跨线程碰）。"""
     try:
         results.put(("ok", analyze(msgs, settings.relationship(), context=settings.context(),
-                                   provider=settings.draft_provider(), reply_to=reply_to),
+                                   provider=settings.draft_provider(), reply_to=reply_to,
+                                   style=settings.style()),
                      title, revision))
     except Exception as e:
         results.put(("err", f"分析失败: {e}", title, revision))
