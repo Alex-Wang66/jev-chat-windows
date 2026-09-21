@@ -71,8 +71,8 @@ WGC 截微信窗口（GPU 合成窗口也能截，被遮挡也能截）
 
 | 环节 | 服务 | 模型 | key |
 | --- | --- | --- | --- |
-| 起草 3 条候选 | OpenRouter（默认） | `deepseek/deepseek-chat-v3.1` | `OPENROUTER_API_KEY` |
-| 起草 3 条候选 | DeepSeek 直连（更快，可选） | `deepseek-chat` | `DEEPSEEK_API_KEY` |
+| 起草 3 条候选 | OpenRouter（默认） | `deepseek/deepseek-v4.1-flash` | `OPENROUTER_API_KEY` |
+| 起草 3 条候选 | DeepSeek 直连（更快，可选） | `deepseek-flash`（DeepSeek-V4.1-Flash） | `DEEPSEEK_API_KEY` |
 | 判断 + 排序 | OpenRouter | `typesafe/jev-1.13` | `OPENROUTER_API_KEY` |
 
 起草走哪家在设置里选（「起草模型来源」）；判断和排序永远走 OpenRouter，所以 OpenRouter key 必填。

@@ -19,13 +19,14 @@ except ImportError:
     from jev_client import JevError, _api_key, redact_secrets
 
 CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_MODEL = "deepseek/deepseek-chat-v3.1"
+DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash"  # OpenRouter 上的 DeepSeek V4.1 Flash
 MAX_RETRIES = 3
 
 # provider -> (url, 默认模型, key 的环境变量名)
 PROVIDERS = {
     "openrouter": (CHAT_URL, DEFAULT_MODEL, "OPENROUTER_API_KEY"),
-    "deepseek": ("https://api.deepseek.com/chat/completions", "deepseek-chat", "DEEPSEEK_API_KEY"),
+    # 官方 id：deepseek-flash = DeepSeek-V4.1-Flash（非思考，起草够用）；deepseek-chat 2026-07-24 已下线，只是暂时还被路由
+    "deepseek": ("https://api.deepseek.com/chat/completions", "deepseek-flash", "DEEPSEEK_API_KEY"),
 }
 
 SYSTEM = (
