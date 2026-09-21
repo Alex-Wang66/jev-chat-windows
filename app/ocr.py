@@ -34,6 +34,7 @@ def read_title(header):
 
 def who_said(chat, box):
     """按 OCR 框里的颜色分类，不看 x 坐标。返回 (谁, 底色, 墨高)：
+    先看底色平不平：框里众数颜色占比 <50% 就是图片（头像/照片/表情包）里的字 → None 丢掉。
     绿底 → me；非绿且文字对底色对比度 ≥150 → her；其余（引用块、群里的发言人名、时间戳、系统提示、
     链接卡片描述——都是灰字，对比度 80~95）→ "gray"。
     实测：气泡正文对比度 178~208，me 绿泡 142~150，灰字 ≤ 93。深浅主题都靠这套。
@@ -44,6 +45,11 @@ def who_said(chat, box):
         return None, None, 0
     vals, cnt = np.unique(reg.reshape(-1, 3), axis=0, return_counts=True)
     bg = vals[cnt.argmax()]
+    if cnt.max() / reg.shape[0] / reg.shape[1] < 0.45:
+        # 文字必须落在平底色上：WGC 帧是精确像素，气泡/面板里众数颜色占 0.56~0.82，
+        # 头像/照片/表情包里只有 0.1~0.3——那是图片里的字（头像上的「借仲夏夜之梦」之类），不是消息。
+        # ponytail: 只对精确像素的帧成立；缩放/压缩过的截图（比如拿预览窗再截一次的图）底色会糊成几百种颜色，全会被当图片。
+        return None, bg, 0
     diff = np.abs(reg @ [0.299, 0.587, 0.114] - bg @ [0.299, 0.587, 0.114])
     ink_h = best = 0
     for r in (diff > 60).any(axis=1):
