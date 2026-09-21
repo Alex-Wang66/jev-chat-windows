@@ -44,25 +44,43 @@ SYSTEM = (
 )
 
 
+def _clean(x: str) -> str:
+    """剥掉一条候选两端的括号/引号/编号/逗号——模型偶尔一行给一个 ["…"]，或者整条带引号。"""
+    x = re.sub(r"^\s*(?:\d+[.)、]|[-*])\s*", "", x.strip())
+    return x.strip(" \t[]\"'“”‘’,，")
+
+
 def _parse_candidates(content: str) -> list[str]:
-    """从模型输出里抠候选（最多 3 条，可能不足）。先按 JSON 数组，失败再退化按行。一条都没有才抛。"""
+    """从模型输出里抠候选（最多 3 条，可能不足）。先整体按 JSON 数组；不行就逐行——每行再试 JSON
+    （一行一个 ["…"] 的情况），最后兜底剥符号。一条都没有才抛。"""
     content = content.strip()
     # 去掉可能的 ```json 围栏
     content = re.sub(r"^```(?:json)?|```$", "", content, flags=re.MULTILINE).strip()
     try:
         arr = json.loads(content)
         if isinstance(arr, list):
-            got = [str(x).strip() for x in arr if str(x).strip()]
+            got = [_clean(str(x)) for x in arr]
+            got = [g for g in got if g]
             if got:
                 return got[:3]
     except Exception:
         pass
-    # 退化：逐行,去掉行首编号/符号
-    lines = [re.sub(r"^\s*(?:\d+[.)、]|[-*])\s*", "", ln).strip().strip('"')
-             for ln in content.splitlines() if ln.strip()]
-    lines = [ln for ln in lines if ln]
-    if lines:
-        return lines[:3]
+    got = []
+    for ln in content.splitlines():
+        ln = ln.strip()
+        if not ln:
+            continue
+        bare = re.sub(r"^\s*(?:\d+[.)、]|[-*])\s*", "", ln)
+        try:
+            v = json.loads(bare)
+            items = v if isinstance(v, list) else [v]
+        except Exception:
+            # 几个 ["…"] 挤在一行（逗号连着）：把每个方括号里的字符串抠出来
+            items = re.findall(r'\[\s*"((?:[^"\\]|\\.)*)"\s*\]', bare) if bare.startswith("[") else [ln]
+            items = items or [ln]
+        got += [c for c in (_clean(str(x)) for x in items) if c]
+    if got:
+        return got[:3]
     raise JevError(f"起草结果解析不出候选: {content[:200]!r}")
 
 
@@ -161,4 +179,8 @@ if __name__ == "__main__":
     except JevError:
         pass
     assert _parse_candidates('["只有一条"]') == ["只有一条"]
+    assert _parse_candidates('["好，明天下午"]\n["好嘞，明天聊"]\n["行，今晚弄"]') == ["好，明天下午", "好嘞，明天聊", "行，今晚弄"]
+    assert _parse_candidates('1. ["甲"]\n2. "乙"\n3. 丙') == ["甲", "乙", "丙"]
+    assert _parse_candidates('["a"], ["b"], ["c"]') == ["a", "b", "c"]
+    assert _parse_candidates('他说"明天见"，我回：好') == ['他说"明天见"，我回：好']
     print("draft._parse_three ok")
