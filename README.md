@@ -6,6 +6,23 @@
 判断内核来自安卓版 [Finderchangchang/jev-chat-JARVIS](https://github.com/Finderchangchang/jev-chat-JARVIS)，
 这里把采集换成了 Windows 端的窗口截图 + 离线 OCR。
 
+## 下载即用（推荐）
+
+**普通使用直接下载，不用装 Python、不用碰源码。** 后面的「源码运行」是给开发者的。
+
+👉 **[下载最新版](https://github.com/jev-chat/jev-chat-windows/releases/latest)**
+
+1. 在 Releases 页下载 `jev-chat-windows-vX.Y.Z.zip`（约 146 MB）
+2. 解压到一个固定目录（整个文件夹一起，exe 要用旁边那堆文件）
+3. 双击 `jev-chat-windows.exe`
+
+要求：Windows 10 1903+ / 11，微信 Windows 4.x，一个 OpenRouter API key（[openrouter.ai](https://openrouter.ai/)）。
+
+首次启动会弹设置页填 OpenRouter API key。两个 key 都写进 Windows 用户环境变量（注册表 `HKCU\Environment`），
+不落任何文件；其余设置写在 exe 旁边的 `config.json`，整个文件夹拷走设置也跟着走。
+
+> exe 没签名，SmartScreen 会拦一下：「更多信息」→「仍要运行」。介意就往下看「自己打包」，自己打的更踏实。
+
 ## 截图
 
 <table>
@@ -20,20 +37,6 @@
 <td align="center">采集暂停：不再读微信，已有候选照样能填入、能复制</td>
 </tr>
 </table>
-
-## 下载即用
-
-不想装 Python 就走这条：
-
-1. 去 [Releases](https://github.com/jev-chat/jev-chat-windows/releases) 下最新的
-   `jev-chat-windows-vX.Y.Z.zip`（约 146 MB）
-2. 解压到一个固定目录（整个文件夹一起，exe 要用旁边那堆文件）
-3. 双击 `jev-chat-windows.exe`
-
-首次启动会弹设置页填 OpenRouter API key。两个 key 都写进 Windows 用户环境变量（注册表 `HKCU\Environment`），
-不落任何文件；其余设置写在 exe 旁边的 `config.json`，整个文件夹拷走设置也跟着走。
-
-> exe 没签名，SmartScreen 会拦一下：「更多信息」→「仍要运行」。介意就往下看「自己打包」，自己打的更踏实。
 
 ## 功能
 
@@ -122,6 +125,8 @@ Jev 的判断喂给它，让它自己读对话；7 道判断题加一道「哪�
 
 ## 环境要求
 
+下载 exe 的只看前三条；Python 只有源码运行 / 自己打包才需要。
+
 - **Windows 10 1903+ 或 Windows 11**（Windows Graphics Capture 的最低要求）
 - **Python 3.10+**（Releases 里的 exe 是 CI 用 3.11 打的；只想用 exe 的话不用装 Python）
 - **微信 Windows 4.x**（`Weixin.exe`）
@@ -131,7 +136,9 @@ Jev 的判断喂给它，让它自己读对话；7 道判断题加一道「哪�
 > Win10 上 WGC 会在微信窗口外画一圈黄框，系统不给关；Win11 才能关掉。
 > 嫌碍眼就把标题栏的采集开关拨到「已暂停」，黄框立刻消失。
 
-## 安装与运行
+## 源码运行（开发者）
+
+普通使用请直接用上面的[下载即用](#下载即用推荐)。想改代码、调 prompt、自己打包才需要这一节。
 
 ```bash
 git clone https://github.com/jev-chat/jev-chat-windows.git
