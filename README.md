@@ -104,7 +104,9 @@ DeepSeek 官方 API（`api.deepseek.com`）国内直连，起草基本就是一�
 - **只读自己电脑上、自己本来就有权查看的对话。** 不代替任何人查看别人的聊天。
 - **只截自己的微信窗口 + 本地离线 OCR（RapidOCR）。** 不 hook、不注入、不读微信数据库、不解密、
   不碰微信进程内存。
-- **截图只在内存里。** 捕获到的帧是 numpy 数组，全程不写磁盘、不进日志、不上传，程序里没有 `.save()`。
+- **截图只在内存里。** 捕获到的帧是 numpy 数组，全程不写磁盘、不进日志、不上传；主程序（`app/`、`core/`）
+  里没有 `.save()`。`probe/`、`tools/` 下的开发脚本（人工排查、预览界面用的）会把图存成文件，但这些
+  脚本不在发布包里，普通用户拿到的 exe 不含它们。
 - **绝不自动发送。** 只把文字粘进输入框就停手，不发回车、不点发送按钮。发不发、改不改，你来定。
 - **不碰钱。** 转账、红包、收款相关的界面元素一律不碰，起草的 system prompt 里也禁了这几个话题。
 - **只有对方的新消息到来（或你在群里换了回复对象）才调一次模型。** 静默期零调用——十分钟没人说话
@@ -117,10 +119,17 @@ DeepSeek 官方 API（`api.deepseek.com`）国内直连，起草基本就是一�
   不夹带任何聊天内容；设置里「启动时检查更新」关掉就完全不发这个请求，源码直接跑（没有版本号）也
   不会发。
 
-什么会出网：`core/` 那两次调用（起草 + 判断/排序），加上启动时（可关）一次到 GitHub 查版本号。
-`core/` 送出去的是**最近 N 条对话文本**（N = 设置里的「参考上下文」，默认 10；群聊带发言人名）、
-**关系设置**、**你自己最近 12 条 60 字以内的短消息**（当口吻样本，链接和长段不送）、**你填的说话
-风格**，群聊指定了回复对象的话再加一个对象名。除此之外没有别的。OCR 全程离线。
+什么会出网：判断（`JEV_API_KEY`）去你选的 OpenRouter 或 TypeSafe 直连；起草（`LLM_API_KEY`）发给你
+在设置里选的那家接口（DeepSeek 官网、OpenRouter、OpenAI、Moonshot、智谱、通义、硅基流动、
+Anthropic、Gemini，或者自填的 OpenAI 兼容 / Anthropic 兼容地址），加上启动时（可关）一次到
+GitHub 查版本号。**本项目没有任何自建服务器**，聊天内容只在触发分析的那一刻，发给你自己在设置里
+配置的那个接口，本项目不收集、不落盘、不进日志。发出去的内容固定是：**最近 N 条对话文本**（N =
+设置里的「参考上下文」，默认 10；群聊带发言人名）、**关系设置**、**你自己最近 12 条 60 字以内的短
+消息**（当口吻样本，链接和长段不送）、**你填的说话风格**，群聊指定了回复对象的话再加一个对象名。
+除此之外没有别的。OCR 全程离线。GitHub 版本查询只带 UA 和当前版本号，不夹带任何聊天内容。
+
+**会不会因此被微信封号？** 本项目不 hook、不注入、不读微信的数据库或进程内存、不调用微信的任何
+私有接口或账号体系——只截自己这一个窗口的画面做 OCR，跟读屏软件、录屏软件是同一类操作。
 
 ## 工作原理
 
@@ -318,6 +327,7 @@ jev.spec                PyInstaller 打包定义（onedir），build.bat 和 CI 
 build.bat               本地一键打包（双击就行）
 .github/workflows/release.yml  推 v* tag → windows-latest 上打包 → zip 挂到 Release
 requirements.txt        依赖（纯 ASCII 注释：中文 Windows 上 pip 按 GBK 读会炸）
+NOTICE                  出处、第三方组件许可证与商用约束
 docs/KICKOFF.md         最初的需求和硬约束说明
 docs/icon.ico           程序图标，tools/make_icon.py 生成
 docs/ui_*.png           README 里那三张截图，tools/preview_ui.py --screenshot 出的
@@ -390,6 +400,22 @@ config.json             你自己的设置，不进仓库（在 .gitignore 里�
 - [windows-capture](https://github.com/NiiightmareXD/windows-capture) — Windows Graphics Capture 的 Python 绑定
 - [PyQt-Fluent-Widgets](https://github.com/zhiyiYo/PyQt-Fluent-Widgets) — 界面组件
 
-## License
+## 版权与许可
 
-MIT，见 [LICENSE](LICENSE)。
+Copyright © 2026 rezoch340 与 jev-chat 贡献者。代码以 [MIT](LICENSE) 协议开源，另见 [NOTICE](NOTICE)。
+
+- 本项目是 [Jev 聊天助手](https://github.com/jev-chat/jev-chat-jarvis)（安卓原版）的 Windows
+  姊妹项目，Jev 判断内核与题目口径来自上游，版权归 Finderchangchang 与 jev-chat 贡献者所有。
+- **分发或商用时须保留 LICENSE 与 NOTICE**，并在产品「关于」页、说明文档或发布页写明来源。推荐写法：
+  `基于 jev-chat-windows（https://github.com/jev-chat/jev-chat-windows）二次开发`。
+- 不要用「jev-chat-windows」「Jev 聊天助手」「jev-chat」名称或 chatjevs.com 域名暗示由原作者出品或背书。
+
+**第三方组件与商用**：本项目自己的代码是 MIT，但 Windows 发布包（PyInstaller 打的 zip）里打进了
+[PySide6-Fluent-Widgets](https://qfluentwidgets.com/)，该组件是 GPLv3 协议，非商用免费，商用需要
+向作者购买商业授权。因此发布包整体受 GPLv3 约束：想商用的人请自己去买那份商业授权，或者自己把这个
+组件换掉，本项目不代为处理。其余依赖（PySide6、RapidOCR、windows-capture、openai / anthropic /
+google-genai / typesafe-sdk 等）的许可证见 [NOTICE](NOTICE)。
+
+**免责声明**：本项目只处理你自己设备上、你自己有权查看的聊天。请在自己设备上自用；装到别人机器上
+读别人的聊天记录是另一回事，本项目不为那种用法背书。请遵守微信软件许可协议与当地法律法规，微信
+改版可能导致本项目的界面识别失效。使用本项目造成的后果由使用者自行承担，作者不负责。
