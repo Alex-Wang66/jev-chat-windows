@@ -4,7 +4,7 @@
 上下文、结果、聊天记录都按会话名（子进程 OCR 头部标题得来）分开存，切会话不串味。
 
     pip install rapidocr-onnxruntime numpy windows-capture PySide6-Fluent-Widgets
-OpenRouter key 在独立设置页填写，不用改代码。IDE 里直接 Run。
+两个模型（判断 Jev / 起草语言模型）的来源和 key 在独立设置页填写，不用改代码。IDE 里直接 Run。
 """
 import ctypes
 import multiprocessing
@@ -82,8 +82,13 @@ def analyze_bg(msgs, title, revision, reply_to=None):
     """后台线程只跑网络调用，结果丢队列；UI 只在主线程的 tick 里动（Qt 不能跨线程碰）。"""
     try:
         results.put(("ok", analyze(msgs, settings.relationship(), context=settings.context(),
-                                   provider=settings.draft_provider(), reply_to=reply_to,
-                                   style=settings.style(), thinking=settings.thinking()),
+                                   model=settings.draft_model() or None,
+                                   provider=settings.draft_provider(),
+                                   base_url=settings.draft_base_url() or None,
+                                   reply_to=reply_to, style=settings.style(),
+                                   thinking=settings.thinking(),
+                                   jev_provider=settings.jev_provider(),
+                                   jev_model=settings.jev_model() or None),
                      title, revision))
     except Exception as e:
         results.put(("err", f"分析失败: {e}", title, revision))
@@ -97,11 +102,11 @@ def check_update_bg():
 
 
 def start_analyze(title, msgs):
-    if not settings.has_key():
-        ov.set_status("请先在设置中配置回复服务", "warning")
+    if not settings.has_jev_key():
+        ov.set_status("请先在设置中配置模型", "warning")
         return
-    if settings.draft_provider() == "deepseek" and not settings.has_deepseek_key():
-        ov.set_status("选了 DeepSeek 直连但没填 DeepSeek 密钥，去设置里补上", "warning")
+    if not settings.has_llm_key():
+        ov.set_status(f"起草来源 {settings.draft_provider_name()} 没填密钥，去设置里补上", "warning")
         return
     state["busy"] = True
     ov.set_busy(True)
@@ -238,8 +243,8 @@ if __name__ == "__main__":  # Windows 的 spawn 会让子进程重新执行本�
     else:
         capture_on.set()
         child = spawn_worker()
-    if not settings.has_key():
-        ov.set_status("请先在设置中配置回复服务", "warning")
+    if not settings.has_jev_key():
+        ov.set_status("请先在设置中配置模型", "warning")
         ov.after(0, ov.open_settings)
     if settings.check_update() and update.parse_version(VERSION):  # 开发版没有版本号，不查也不烦源码用户
         threading.Thread(target=check_update_bg, daemon=True).start()

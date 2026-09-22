@@ -16,10 +16,11 @@
 2. 解压到一个固定目录（整个文件夹一起，exe 要用旁边那堆文件）
 3. 双击 `jev-chat-windows.exe`
 
-要求：Windows 10 1903+ / 11，微信 Windows 4.x，一个 OpenRouter API key（[openrouter.ai](https://openrouter.ai/)）。
+要求：Windows 10 1903+ / 11，微信 Windows 4.x，两个 API key（判断一个、起草一个，见下）。
 
-首次启动会弹设置页填 OpenRouter API key。两个 key 都写进 Windows 用户环境变量（注册表 `HKCU\Environment`），
-不落任何文件；其余设置写在 exe 旁边的 `config.json`，整个文件夹拷走设置也跟着走。
+首次启动会弹设置页填这两个 key。key 写进 Windows 用户环境变量（注册表 `HKCU\Environment`）——
+全程只有 `JEV_API_KEY` 和 `LLM_API_KEY` 这两个，不落任何文件；其余设置写在 exe 旁边的
+`config.json`，整个文件夹拷走设置也跟着走。
 
 > exe 没签名，SmartScreen 会拦一下：「更多信息」→「仍要运行」。介意就往下看「自己打包」，自己打的更踏实。
 
@@ -27,19 +28,26 @@
 
 **第一次启动**
 
-1. 弹出的设置页里填 **OpenRouter API key**（[openrouter.ai](https://openrouter.ai/) 申请）。这个必填：
-   判断意图、紧张度、给三条候选排序的 Jev 模型（`typesafe/jev-1.13`）只在 OpenRouter 上有。
-2. 选「你们的关系」（恋人 / 朋友 / 同事 / 家人 / 自定义），保存。可以用了。
+设置页的「模型」卡片分两节，各填一把 key：
 
-**国内用户强烈建议：起草切到 DeepSeek 直连**
+1. **判断 · Jev** —— 判断意图、紧张度，并给三条候选排序。来源选 **OpenRouter**（默认，key 在
+   [openrouter.ai](https://openrouter.ai/) 申请）或 **TypeSafe 直连**（key 在
+   [console.typesafe.ai](https://console.typesafe.ai/) 申请）。填的是哪家的 key 看你上面选了哪家。
+2. **起草 · 语言模型** —— 写那三条候选。默认 **DeepSeek 官网**直连，key 在
+   [platform.deepseek.com](https://platform.deepseek.com/) 申请（很便宜，起草一次几厘钱）。
+   换别家见下面的表，OpenAI / Anthropic / Gemini 三种接口都支持。
+3. 选「你们的关系」（恋人 / 朋友 / 同事 / 家人 / 自定义），保存。可以用了。
 
-起草三条候选默认也走 OpenRouter，但 OpenRouter 在国外，从国内过去这一步要等好几秒、还时不时抽风。
-DeepSeek 官方 API（`api.deepseek.com`）国内直连，起草基本就是一次 HTTP 请求的时间，体感差好几倍：
+两把 key 各管一节，互不相干；同一节里换来源要重填一次 key（只存这一把）。
 
-1. 去 [platform.deepseek.com](https://platform.deepseek.com/) 申请一个 key（很便宜，起草一次几厘钱）
-2. 设置页「回复服务」→「起草模型来源」选 **DeepSeek 直连**，填 DeepSeek key，保存
+**为什么起草默认 DeepSeek 官网直连**
 
-Jev 判断那一步仍然走 OpenRouter，它比起草轻得多，慢一点无所谓。两个 key 都只进注册表，不落文件。
+起草是两次网络调用里重的那次。OpenRouter 在国外，从国内过去要等好几秒、还时不时抽风；
+DeepSeek 官方 API（`api.deepseek.com`）国内直连，起草基本就是一次 HTTP 请求的时间，体感差好几倍。
+所以起草默认就是它，不用改。
+
+判断那一步比起草轻得多，慢一点无所谓，默认走 OpenRouter 即可；嫌慢就把它也换成 TypeSafe 直连。
+两把 key 都只进注册表，不落文件。
 
 **日常怎么用**
 
@@ -64,7 +72,7 @@ Jev 判断那一步仍然走 OpenRouter，它比起草轻得多，慢一点无�
 </tr>
 <tr>
 <td align="center">回复建议：「当前会话」跟随微信、群聊多一行「回复对象」，3 条候选带 Jev 概率百分比，推荐那条置顶</td>
-<td align="center">设置：关系背景、说话风格、参考上下文条数、群聊指定回复对象（往下还有回复服务）</td>
+<td align="center">设置：关系背景、说话风格、参考上下文条数、群聊指定回复对象（往下还有「模型」卡片）</td>
 <td align="center">采集暂停：不再读微信，已有候选照样能填入、能复制</td>
 </tr>
 </table>
@@ -80,7 +88,8 @@ Jev 判断那一步仍然走 OpenRouter，它比起草轻得多，慢一点无�
 - **判断摘要**：建议动作、可能意图、对方可能需要、紧张度 0–9。
 - **采集开关**：标题栏一拨就停，WGC 会话一起停掉（Win10 的黄框跟着消失），已有候选不受影响。
 - **实时聊天记录**：底部展开，看 OCR 到底读出了什么，认错了一眼就能发现。
-- **起草模型来源可选**：OpenRouter，或 DeepSeek 直连（更快，另填一个 key）。
+- **两个模型都能换**：判断走 OpenRouter 或 TypeSafe 直连；起草有 11 家预设（默认 DeepSeek 官网），
+  OpenAI / Anthropic / Gemini 三种协议都支持，也能填自己的 Base URL。全程只要两把 key。
 - **思考模式开关**：默认关；开了模型先想再写，更斟酌但慢好几倍、贵一些。
 - **参考上下文条数**：3~30，默认 10，起草和判断都按它取最近 N 条。
 - **说话风格**：一句话描述自己的口吻，补在「照着你最近发的消息模仿」之上。
@@ -100,9 +109,10 @@ Jev 判断那一步仍然走 OpenRouter，它比起草轻得多，慢一点无�
 - **不碰钱。** 转账、红包、收款相关的界面元素一律不碰，起草的 system prompt 里也禁了这几个话题。
 - **只有对方的新消息到来（或你在群里换了回复对象）才调一次模型。** 静默期零调用——十分钟没人说话
   就是十分钟零 token。
-- **API key 只进环境变量。** `OPENROUTER_API_KEY` 和（选了 DeepSeek 直连才要的）`DEEPSEEK_API_KEY`
-  都写进注册表 `HKCU\Environment`（跟 `setx` 同一个地方），任何文件里都不出现 key，也绝不进日志
-  （报错文本一律脱敏）。
+- **API key 只进环境变量，而且全程只有两个。** `JEV_API_KEY`（判断）和 `LLM_API_KEY`（起草），
+  不管来源选哪家都是这两个槽。都写进注册表 `HKCU\Environment`（跟 `setx` 同一个地方），任何文件里
+  都不出现 key，也绝不进日志（报错文本一律脱敏）。老版本按来源分开存的 `OPENROUTER_API_KEY` /
+  `DEEPSEEK_API_KEY` 仍然能读到，保存一次就迁到新名字上。
 - **启动时查一次版本号（可关）。** 只向 GitHub Releases API 发一个 GET，带的只有 UA 和当前版本号，
   不夹带任何聊天内容；设置里「启动时检查更新」关掉就完全不发这个请求，源码直接跑（没有版本号）也
   不会发。
@@ -130,16 +140,38 @@ WGC 截微信窗口（GPU 合成窗口也能截，被遮挡也能截）
 
 ### 模型
 
-| 环节 | 服务 | 模型 | key |
-| --- | --- | --- | --- |
-| 起草 3 条候选 | OpenRouter（默认） | `deepseek/deepseek-v4.1-flash` | `OPENROUTER_API_KEY` |
-| 起草 3 条候选 | DeepSeek 直连（更快，可选） | `deepseek-flash`（DeepSeek-V4.1-Flash） | `DEEPSEEK_API_KEY` |
-| 判断 + 排序 | OpenRouter（`/api/alpha/decisions`） | `typesafe/jev-1.13` | `OPENROUTER_API_KEY` |
+**判断 + 排序（key：`JEV_API_KEY`）**
 
-起草走哪家在设置里选；判断和排序永远走 OpenRouter，所以 OpenRouter key 必填。起草是**盲起草**——不把
+| 来源 | 地址 | 默认模型 |
+| --- | --- | --- |
+| OpenRouter（默认） | `openrouter.ai/api/alpha/decisions` | `typesafe/jev-1.13` |
+| TypeSafe 直连 | `api.typesafe.ai`（官方 `typesafe-sdk`） | `jev-latest` |
+
+**起草 3 条候选（key：`LLM_API_KEY`）**
+
+| 来源 | 接口协议 | 地址 | 默认模型 |
+| --- | --- | --- | --- |
+| DeepSeek 官网（默认） | OpenAI | `api.deepseek.com` | `deepseek-flash` |
+| OpenRouter | OpenAI | `openrouter.ai/api/v1` | `deepseek/deepseek-v4.1-flash` |
+| OpenAI | OpenAI | `api.openai.com/v1` | 自己选 |
+| Moonshot (Kimi) | OpenAI | `api.moonshot.cn/v1` | 自己选 |
+| 智谱 GLM | OpenAI | `open.bigmodel.cn/api/paas/v4` | 自己选 |
+| 通义千问 | OpenAI | `dashscope.aliyuncs.com/compatible-mode/v1` | 自己选 |
+| 硅基流动 | OpenAI | `api.siliconflow.cn/v1` | 自己选 |
+| Anthropic | Anthropic | `api.anthropic.com` | 自己选 |
+| Google Gemini | Gemini | SDK 自带 | 自己选 |
+| 自定义 · OpenAI 兼容 | OpenAI | 自己填 | 自己选 |
+| 自定义 · Anthropic 兼容 | Anthropic | 自己填 | 自己选 |
+
+没有默认模型的来源，在设置页点「获取模型」拉一次列表自己挑（也能直接手打模型 id）。
+三种协议各走自家官方 SDK（`openai` / `anthropic` / `google-genai`），不自己拼 HTTP；
+判断那条 OpenRouter 的路是唯一的例外——`typesafe-sdk` 把路径写死成 `/v1/systemone`，
+打不到 OpenRouter 的 `/api/alpha/decisions`。
+
+两节各一把 key，都必填。起草是**盲起草**——不把
 Jev 的判断喂给它，让它自己读对话；7 道判断题加一道「哪条候选最合适」一次问完，概率就是卡片上的百分比。
-温度 1.2，`max_tokens` 400；思考模式默认关，开了会带上思考开关、`max_tokens` 提到 4000（DeepSeek 把
-思考过程也算进去，400 会把答案截断）。模型只给出 1~2 条时会带着它的回答追问一次补齐，还不够就按实际
+温度 1.2，`max_tokens` 400；思考模式默认关，开了会带上各家自己的思考开关、`max_tokens` 提到 4000
+（思考过程也算进去，400 会把答案截断）。思考开关只有 DeepSeek / OpenRouter / Anthropic / Gemini 认。模型只给出 1~2 条时会带着它的回答追问一次补齐，还不够就按实际
 条数走（少于 2 条就不排序）。
 
 ### 为什么走 OCR
@@ -214,10 +246,14 @@ pyinstaller --noconfirm --clean jev.spec
 | 说话风格（可选） | 一句话描述自己的口吻，只喂给起草；留空就只靠最近消息模仿 | `config.json` → `style` |
 | 参考上下文 | 起草和判断各看最近多少条消息，3~30 | `config.json` → `context`（默认 10） |
 | 群聊指定回复对象 | 开了群聊里才有「回复对象」那一行，候选针对 TA 写 | `config.json` → `reply_target`（默认关） |
-| OpenRouter API 密钥 | 判断和排序必用；起草默认也用它。已配置时留空 = 保留 | 注册表 `HKCU\Environment` → `OPENROUTER_API_KEY` |
-| 起草模型来源 | OpenRouter 还是 DeepSeek 直连 | `config.json` → `draft_provider`（`openrouter` / `deepseek`） |
-| DeepSeek API 密钥 | 只在选了直连时出现，也只有起草用它 | 注册表 `HKCU\Environment` → `DEEPSEEK_API_KEY` |
-| 起草时开启思考模式 | 开了模型先想再写，慢好几倍、贵一些；两种来源都生效 | `config.json` → `thinking`（默认关） |
+| 判断 · 来源 | OpenRouter 还是 TypeSafe 直连 | `config.json` → `jev_provider`（默认 `openrouter`） |
+| 判断 · 密钥 | 上面选哪家就填哪家的 key。已配置时留空 = 保留 | 注册表 `HKCU\Environment` → `JEV_API_KEY` |
+| 判断 · 模型 | 可手打，也可点「获取模型」拉列表挑 | `config.json` → `jev_model`（空 = 该来源默认） |
+| 起草 · 来源 | 上面那张表里的任意一家 | `config.json` → `draft_provider`（默认 `deepseek`） |
+| 起草 · Base URL | 只有两个「自定义」来源才出现这一行 | `config.json` → `draft_base_url` |
+| 起草 · 密钥 | 上面选哪家就填哪家的 key。已配置时留空 = 保留 | 注册表 `HKCU\Environment` → `LLM_API_KEY` |
+| 起草 · 模型 | 可手打，也可点「获取模型」拉列表挑 | `config.json` → `draft_model`（空 = 该来源默认） |
+| 起草时开启思考模式 | 开了模型先想再写，慢好几倍、贵一些 | `config.json` → `thinking`（默认关） |
 | 启动时检查更新 | 开了才在启动时查一次 GitHub 最新版本号，有新版本就在标题栏下面提示 | `config.json` → `check_update`（默认开） |
 
 主界面上那几个（标题栏的采集开关、「当前会话」和「回复对象」下拉、「填入时带 @」勾选框）只在内存里，
@@ -255,12 +291,14 @@ app/                    UI + 采集层
   worker.py             采集子进程主循环（截图 → 定位 → OCR → 去重 → 丢队列）
   fill.py               填入不发送：写剪贴板 → 点输入框 → Ctrl+V，到此为止
   overlay.py            置顶悬浮窗：会话/回复对象、判断摘要、3 条候选、聊天记录、设置页（PySide6 + Fluent）
-  settings.py           两个 key 只进注册表，其余设置落 config.json
+  settings.py           两把 key 只进注册表，其余设置落 config.json
 core/                   Jev 判断内核，平台无关，跟安卓原版同一套口径
   engine.py             唯一入口 analyze(messages, relationship) → 候选 + 排序 + 判断
-  jev_client.py         Jev 判断 API 客户端（stdlib、脱敏、429/529 退避）
+  providers.py          两张来源表（判断 / 起草）：协议、地址、默认模型；纯数据，不认 key
+  llm.py                三种协议的薄适配层，一律走官方 SDK：openai / anthropic / google-genai
+  jev_client.py         Jev 判断客户端：OpenRouter（urllib）/ TypeSafe 直连（typesafe-sdk）；脱敏、退避
   questions.py          7 道判断题 + build_state() + build_rank_question()
-  draft.py              起草 3 条候选（OpenRouter / DeepSeek 直连）
+  draft.py              起草 3 条候选：拼提示词、解析、过滤、不足时追问补齐；调用走 llm.py
 tools/
   demo.py               端到端冒烟：拿一段写死的对话跑完整链（需 key + 联网）
   preview_ui.py         用合成数据预览界面，不采集不联网不碰微信；可 --screenshot 出图
@@ -308,6 +346,16 @@ config.json             你自己的设置，不进仓库（在 .gitignore 里�
 - **没有托盘**：关窗口就是退出（标题栏的「最小化」是收到任务栏，不是后台常驻）。
 
 ## 更新记录
+
+**v0.1.4**
+- 设置页「回复服务」换成「模型」卡片：判断 · Jev / 起草 · 语言模型两节，各有来源 / 密钥 / 模型，
+  模型可点「获取模型」拉接口的真实列表
+- 判断多一条 TypeSafe 直连（官方 `typesafe-sdk`）；起草从 2 家扩到 11 家预设，OpenAI / Anthropic /
+  Gemini 三种协议一律走各自官方 SDK，另可填自定义 Base URL
+- 起草默认改成 DeepSeek 官网直连（国内最快）
+- **key 收敛成两把**：`JEV_API_KEY` 和 `LLM_API_KEY`，换来源复用同一个槽；老的
+  `OPENROUTER_API_KEY` / `DEEPSEEK_API_KEY` 仍能读到，保存一次自动迁移
+- 修：部分保存（某项传 None）会把 `config.json` 里那几项清空——写文件前没先把要保留的值读出来
 
 **v0.1.3**
 - 起草去 AI 味：中文反模板 system prompt、拿自己最近的消息当口吻样本、可选「说话风格」设置、
