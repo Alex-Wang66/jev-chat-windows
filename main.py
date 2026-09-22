@@ -13,10 +13,11 @@ import threading
 import traceback
 from collections import deque
 
-from app import settings, worker
+from app import settings, update, worker
 from app.capture import find_wechat_hwnd
 from app.fill import fill
 from app.overlay import Overlay
+from app.version import VERSION
 from core.engine import analyze
 
 # {会话名: {history, result, rev, target, senders}}：每个会话各自的上下文、上次结果和版本号，互不串味
@@ -26,6 +27,7 @@ from core.engine import analyze
 chats = {}
 state = {"area": None, "busy": False, "rerun": None, "hwnd": None, "chat": ""}
 results = queue.Queue()
+update_result = queue.Queue()  # 独立小队列，别跟 results 的 (kind, r, title, revision) 形状搅在一起
 
 
 def chat_of(title):
@@ -85,6 +87,13 @@ def analyze_bg(msgs, title, revision, reply_to=None):
                      title, revision))
     except Exception as e:
         results.put(("err", f"分析失败: {e}", title, revision))
+
+
+def check_update_bg():
+    """启动时后台查一次新版本，跟 analyze_bg 一个套路：网络调用在线程里，UI 只在 tick() 里动。"""
+    r = update.check_latest(VERSION)
+    if r:
+        update_result.put(r)
 
 
 def start_analyze(title, msgs):
@@ -185,6 +194,9 @@ def drain():
 def tick():
     try:
         drain()
+        while not update_result.empty():
+            latest, url = update_result.get()
+            ov.set_update(latest, url)
         while not results.empty():
             kind, r, title, revision = results.get()
             state["busy"] = False
@@ -229,6 +241,8 @@ if __name__ == "__main__":  # Windows 的 spawn 会让子进程重新执行本�
     if not settings.has_key():
         ov.set_status("请先在设置中配置回复服务", "warning")
         ov.after(0, ov.open_settings)
+    if settings.check_update() and update.parse_version(VERSION):  # 开发版没有版本号，不查也不烦源码用户
+        threading.Thread(target=check_update_bg, daemon=True).start()
     ov.after(50, tick)
     try:
         ov.run()

@@ -69,11 +69,11 @@ def main() -> int:
 
     demo_settings = {"has_key": args.state != "setup", "relationship": "friends", "context": 10,
                      "has_deepseek_key": False, "draft_provider": "openrouter", "reply_target": True,
-                     "style": "话少，基本不用标点，急了才发感叹号", "thinking": False}
+                     "style": "话少，基本不用标点，急了才发感叹号", "thinking": False, "check_update": True}
 
     def save_demo_settings(key, relationship_text, context_n=None,
                            deepseek_key_text=None, draft_provider=None, reply_target_on=None,
-                           style_text=None, thinking_on=None):
+                           style_text=None, thinking_on=None, check_update_on=None):
         if key:
             demo_settings["has_key"] = True
         demo_settings["relationship"] = relationship_text
@@ -89,6 +89,8 @@ def main() -> int:
             demo_settings["style"] = style_text
         if thinking_on is not None:
             demo_settings["thinking"] = bool(thinking_on)
+        if check_update_on is not None:
+            demo_settings["check_update"] = bool(check_update_on)
 
     # 在创建 Overlay 前替换设置接口，整个事件循环期间都保持隔离。
     with patch.multiple(
@@ -102,6 +104,7 @@ def main() -> int:
         reply_target=lambda: demo_settings["reply_target"],
         style=lambda: demo_settings["style"],
         thinking=lambda: demo_settings["thinking"],
+        check_update=lambda: demo_settings["check_update"],
         save=save_demo_settings,
     ):
         from PySide6.QtCore import QTimer
@@ -129,6 +132,7 @@ def main() -> int:
             ov.set_chat(_CHAT)
             ov.show(_RESULT)
             ov.set_status("演示模式：已生成 3 条建议，点击填入仅模拟操作。", kind="success")
+            ov.set_update("9.9.9", "https://github.com/jev-chat/jev-chat-windows/releases/latest")
             if args.state == "loading":
                 ov.set_busy(True)
                 ov.set_status("演示模式：正在为最新消息生成建议…", kind="busy")

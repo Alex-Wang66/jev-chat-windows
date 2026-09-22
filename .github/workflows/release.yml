@@ -15,6 +15,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: 写入版本号（tag 用 tag 名，手动触发用短 SHA）
+        shell: pwsh
+        run: |
+          $ver = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME -replace '^v','' } else { $env:GITHUB_SHA.Substring(0, 7) }
+          Set-Content -Path app/version.py -Value ('VERSION = "' + $ver + '"') -Encoding utf8
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'

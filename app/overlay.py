@@ -10,13 +10,14 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 from qfluentwidgets import (
-    BodyLabel, CardWidget, CheckBox, ComboBox, FluentIcon as FIF,
+    BodyLabel, CardWidget, CheckBox, ComboBox, FluentIcon as FIF, HyperlinkButton,
     IndeterminateProgressBar, LineEdit, PasswordLineEdit, PlainTextEdit,
     PrimaryPushButton, PushButton, ScrollArea, SpinBox, SwitchButton, Theme, TransparentToolButton,
     setCustomStyleSheet, setFont, setTheme, setThemeColor,
 )
 
 from app import settings
+from app.version import VERSION
 
 _LOG_LINES = 300
 _MUTED = "#68776f"
@@ -215,13 +216,31 @@ class Overlay:
         title.addWidget(_tool(FIF.REMOVE, "最小化", self.win.showMinimized, header))
         title.addWidget(_tool(FIF.CLOSE, "关闭助手", self.win.close, header))
         outer.addWidget(header)
+        self.updateBar = QWidget(self.win)
+        update_row = QHBoxLayout(self.updateBar)
+        update_row.setContentsMargins(18, 4, 8, 4)
+        update_row.setSpacing(8)
+        self.updateLabel = _label("", 12, _GREEN, True)
+        update_row.addWidget(self.updateLabel, 1)
+        self.updateLink = HyperlinkButton("", "去下载", self.updateBar)
+        self.updateLink.setFixedHeight(24)
+        update_row.addWidget(self.updateLink)
+        closeUpdate = TransparentToolButton(FIF.CLOSE, self.updateBar)
+        closeUpdate.setFixedSize(20, 20)
+        closeUpdate.setToolTip("关闭更新提示")
+        closeUpdate.setAccessibleName("关闭更新提示")
+        closeUpdate.clicked.connect(lambda: self.updateBar.hide())
+        update_row.addWidget(closeUpdate)
+        self.updateBar.setFixedHeight(32)
+        self.updateBar.hide()
+        outer.addWidget(self.updateBar)
         self.pages = QStackedWidget(self.win)
         outer.addWidget(self.pages, 1)
         self._build_home()
         self._build_settings()
         footer = QHBoxLayout()
         footer.setContentsMargins(20, 9, 8, 8)
-        footer.addWidget(_label("仅填入输入框 · 发送由你确认", 11, _MUTED), 1)
+        footer.addWidget(_label(f"仅填入输入框 · 发送由你确认 · v{VERSION}", 11, _MUTED), 1)
         grip = QSizeGrip(self.win)
         grip.setFixedSize(16, 16)
         footer.addWidget(grip, 0, Qt.AlignBottom)
@@ -455,6 +474,17 @@ class Overlay:
         box.addWidget(self._hint(
             "开了以后群聊里可以选回复给谁，候选会针对 TA 写，填入时可带 @。关了就正常回复。"
         ))
+        update_row = QHBoxLayout()
+        update_row.addWidget(_label("启动时检查更新", 13), 1)
+        self.updateSwitch = SwitchButton()
+        self.updateSwitch.setOnText("开")
+        self.updateSwitch.setOffText("关")
+        self.updateSwitch.setAccessibleName("启动时检查更新")
+        update_row.addWidget(self.updateSwitch)
+        box.addLayout(update_row)
+        box.addWidget(self._hint(
+            "只向 GitHub 查最新版本号，不发送任何数据。国内访问 GitHub 慢的话关掉也行。"
+        ))
         body.addWidget(preference)
 
         connection = _Surface()
@@ -569,6 +599,7 @@ class Overlay:
             "已配置，留空保留" if settings.has_deepseek_key() else "输入你的 DeepSeek 密钥")
         self.dsKeyState.setText("已配置" if settings.has_deepseek_key() else "未配置")
         self.thinkingSwitch.setChecked(settings.thinking())
+        self.updateSwitch.setChecked(settings.check_update())
         self._sync_ds_fields()  # setCurrentIndex 没变就不发信号，这里补一次
         self.settingsFeedback.hide()
 
@@ -595,7 +626,8 @@ class Overlay:
                           deepseek_key or None, provider,
                           reply_target_on=self.targetSwitch.isChecked(),
                           style_text=self.styleEdit.text().strip(),
-                          thinking_on=self.thinkingSwitch.isChecked())
+                          thinking_on=self.thinkingSwitch.isChecked(),
+                          check_update_on=self.updateSwitch.isChecked())
         except Exception:
             self._settings_feedback("保存失败，请检查配置文件是否可写后重试。", error=True)
             return
@@ -652,6 +684,12 @@ class Overlay:
         self._capture_text(on)
         if self.on_toggle_capture:
             self.on_toggle_capture(on)
+
+    def set_update(self, latest, url):
+        """main.py 后台线程查到比当前新的版本才会调这个。只显示版本号和 Release 链接，别的什么都没有。"""
+        self.updateLabel.setText(f"有新版本 v{latest}")
+        self.updateLink.setUrl(url)
+        self.updateBar.show()
 
     def set_capture(self, on, reason=""):
         """父进程回报的状态：只改界面，不回调（不然和父进程来回打架）。reason 为空用默认说明。"""
