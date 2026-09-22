@@ -207,8 +207,9 @@ Jev 的判断喂给它，让它自己读对话；7 道判断题加一道「哪�
 - **Windows 10 1903+ 或 Windows 11**（Windows Graphics Capture 的最低要求）
 - **Python 3.10+**（Releases 里的 exe 是 CI 用 3.11 打的；只想用 exe 的话不用装 Python）
 - **微信 Windows 4.x**（`Weixin.exe`）
-- **OpenRouter API key**（[openrouter.ai](https://openrouter.ai/)），选了直连再加一个
-  [DeepSeek key](https://platform.deepseek.com/)
+- **两把 API key**：判断用 `JEV_API_KEY`，默认来源 [OpenRouter](https://openrouter.ai/)（或
+  [TypeSafe 直连](https://console.typesafe.ai/)）；起草用 `LLM_API_KEY`，默认
+  [DeepSeek 官网](https://platform.deepseek.com/)。详见下面「使用说明」
 
 > Win10 上 WGC 会在微信窗口外画一圈黄框，系统不给关；Win11 才能关掉。
 > 嫌碍眼就把标题栏的采集开关拨到「已暂停」，黄框立刻消失。
@@ -228,9 +229,9 @@ python main.py
 
 PyCharm / VS Code 里直接 Run `main.py` 也行。
 
-首次启动会自动弹出设置页：填 OpenRouter API key，选你们的关系（恋人 / 朋友 / 同事 / 家人 / 自定义）。
-key 写进注册表 `HKCU\Environment`，重启后依然有效，不落任何文件；其余设置写进项目根的 `config.json`
-（已在 `.gitignore` 里）。
+首次启动会自动弹出设置页：填两把 key（判断 `JEV_API_KEY`、起草 `LLM_API_KEY`，见上面「使用说明」），
+选你们的关系（恋人 / 朋友 / 同事 / 家人 / 自定义）。key 写进注册表 `HKCU\Environment`，重启后依然有效，
+不落任何文件；其余设置写进项目根的 `config.json`（已在 `.gitignore` 里）。
 
 ### 自己打包
 
@@ -255,6 +256,7 @@ pyinstaller --noconfirm --clean jev.spec
 | 说话风格（可选） | 一句话描述自己的口吻，只喂给起草；留空就只靠最近消息模仿 | `config.json` → `style` |
 | 参考上下文 | 起草和判断各看最近多少条消息，3~30 | `config.json` → `context`（默认 10） |
 | 群聊指定回复对象 | 开了群聊里才有「回复对象」那一行，候选针对 TA 写 | `config.json` → `reply_target`（默认关） |
+| 启动时检查更新 | 开了才在启动时查一次 GitHub 最新版本号，有新版本就在标题栏下面提示 | `config.json` → `check_update`（默认开） |
 | 判断 · 来源 | OpenRouter 还是 TypeSafe 直连 | `config.json` → `jev_provider`（默认 `openrouter`） |
 | 判断 · 密钥 | 上面选哪家就填哪家的 key。已配置时留空 = 保留 | 注册表 `HKCU\Environment` → `JEV_API_KEY` |
 | 判断 · 模型 | 可手打，也可点「获取模型」拉列表挑 | `config.json` → `jev_model`（空 = 该来源默认） |
@@ -263,7 +265,6 @@ pyinstaller --noconfirm --clean jev.spec
 | 起草 · 密钥 | 上面选哪家就填哪家的 key。已配置时留空 = 保留 | 注册表 `HKCU\Environment` → `LLM_API_KEY` |
 | 起草 · 模型 | 可手打，也可点「获取模型」拉列表挑 | `config.json` → `draft_model`（空 = 该来源默认） |
 | 起草时开启思考模式 | 开了模型先想再写，慢好几倍、贵一些 | `config.json` → `thinking`（默认关） |
-| 启动时检查更新 | 开了才在启动时查一次 GitHub 最新版本号，有新版本就在标题栏下面提示 | `config.json` → `check_update`（默认开） |
 
 主界面上那几个（标题栏的采集开关、「当前会话」和「回复对象」下拉、「填入时带 @」勾选框）只在内存里，
 不落盘，重启回默认。
@@ -357,15 +358,42 @@ config.json             你自己的设置，不进仓库（在 .gitignore 里�
 
 ## 更新记录
 
-**v0.1.4**
-- 设置页「回复服务」换成「模型」卡片：判断 · Jev / 起草 · 语言模型两节，各有来源 / 密钥 / 模型，
-  模型可点「获取模型」拉接口的真实列表
-- 判断多一条 TypeSafe 直连（官方 `typesafe-sdk`）；起草从 2 家扩到 11 家预设，OpenAI / Anthropic /
-  Gemini 三种协议一律走各自官方 SDK，另可填自定义 Base URL
-- 起草默认改成 DeepSeek 官网直连（国内最快）
-- **key 收敛成两把**：`JEV_API_KEY` 和 `LLM_API_KEY`，换来源复用同一个槽；老的
+**未发版**
+- 设置页「模型」卡片：判断 · Jev（OpenRouter / TypeSafe 直连）+ 起草 · 语言模型（11 家预设 + 自定义
+  Base URL），三种协议一律走官方 SDK（`openai` / `anthropic` / `google-genai`），可点「获取模型」拉
+  接口的真实列表；**key 收敛成两把** `JEV_API_KEY` / `LLM_API_KEY`，换来源复用同一个槽，老的
   `OPENROUTER_API_KEY` / `DEEPSEEK_API_KEY` 仍能读到，保存一次自动迁移
-- 修：部分保存（某项传 None）会把 `config.json` 里那几项清空——写文件前没先把要保留的值读出来
+- 修：`settings.save` 部分保存（某项传 None）会把 `config.json` 里那几项清空——写文件前没先把要保留
+  的值读出来
+- 合规：补 `NOTICE`、`LICENSE` 加上游版权行，README 加「版权与许可」「免责声明」和封号问答，重写
+  「什么会出网」；发布 zip 带上 LICENSE/NOTICE
+- probe：Laya 本地决策模型能不能替 Jev 的探针（中英文题、把对话译成英文再试）——结论都不够稳，暂不替换
+
+**v0.1.8**
+- 新版本提示：启动时查一次 GitHub Releases 最新版本号（可在设置里关），有更新在标题栏下出一条横幅带
+  下载链接
+- 页脚显示当前版本号，CI 按 tag 写入 `app/version.py`
+
+**v0.1.7**
+- fill：64 位下剪贴板 API 补 `restype`/`argtypes`，修句柄被截断导致的崩溃（来自 PR #2）；剪贴板被占
+  重试、`AttachThreadInput` 抢前台、粘贴前 `Ctrl+End` 追加再填
+- 填入失败把真实异常写进聊天记录
+- `requirements.txt` 钉 `rapidocr` 1.4.x（1.2.x 构造参数会 `KeyError`）
+- README：加「使用说明」放第二节，「下载即用」提到最前标为推荐，「源码运行」改成开发者向
+
+**v0.1.6**
+- 仓库从个人账号转到 jev-chat 组织，改名 `jev-chat-windows`
+- README、打包产物名（`build.bat` / `jev.spec`）、CI release 产物名同步改名
+
+**v0.1.5**
+- 防注入硬防线：上下文里疑似注入的对方消息标出来 + 围栏包住对话；候选原样出现在注入消息里的直接丢，
+  不够再追问补齐
+- 候选去重：跟对方最近 5 条消息里任一条一样就丢（纯笑声例外）
+
+**v0.1.4**
+- 起草 prompt 加一道软防线：对话里出现「忽略上面的规则」「你现在是……」之类的话，按聊天内容正常回，
+  不当指令（v0.1.5 硬防线的前身）
+- README 全面刷新：功能、设置说明表、模型/出网内容、项目结构、已知限制、更新记录
 
 **v0.1.3**
 - 起草去 AI 味：中文反模板 system prompt、拿自己最近的消息当口吻样本、可选「说话风格」设置、
