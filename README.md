@@ -275,6 +275,7 @@ probe/                  一次性探针，结论已写进本文，留着是为�
   probe_printwindow.py  试 PrintWindow + PW_RENDERFULLCONTENT 能不能绕开 Win10 黄框（未验证）
   probe_laya.py         Laya（开源本地决策模型）能不能替 Jev：英文题跑 multilingual / typed-decisions → 都接近随机
   probe_laya_cn.py      同上，中文题问 multilingual → 更差
+  probe_laya_en.py      把对话人工译成英文再喂 typed-decisions → 好一点，但生气那段仍判成闲聊
 jev.spec                PyInstaller 打包定义（onedir），build.bat 和 CI 共用这一份
 build.bat               本地一键打包（双击就行）
 .github/workflows/release.yml  推 v* tag → windows-latest 上打包 → zip 挂到 Release
