@@ -1,4 +1,4 @@
-# jev-chat-JARVIS-windows
+# jev-chat-windows
 
 微信（Windows 4.x）旁挂的回复辅助：本地 OCR 读屏上的对话 → Jev 判断意图/情绪 → 给出 3 条候选回复 →
 一键填入微信输入框。**发送永远手动，程序不替你按发送。**
@@ -25,10 +25,10 @@
 
 不想装 Python 就走这条：
 
-1. 去 [Releases](https://github.com/rezoch340/jev-chat-JARVIS-windows/releases) 下最新的
-   `jev-chat-JARVIS-windows-vX.Y.Z.zip`（约 146 MB）
+1. 去 [Releases](https://github.com/jev-chat/jev-chat-windows/releases) 下最新的
+   `jev-chat-windows-vX.Y.Z.zip`（约 146 MB）
 2. 解压到一个固定目录（整个文件夹一起，exe 要用旁边那堆文件）
-3. 双击 `jev-chat-JARVIS-windows.exe`
+3. 双击 `jev-chat-windows.exe`
 
 首次启动会弹设置页填 OpenRouter API key。两个 key 都写进 Windows 用户环境变量（注册表 `HKCU\Environment`），
 不落任何文件；其余设置写在 exe 旁边的 `config.json`，整个文件夹拷走设置也跟着走。
@@ -134,8 +134,8 @@ Jev 的判断喂给它，让它自己读对话；7 道判断题加一道「哪�
 ## 安装与运行
 
 ```bash
-git clone https://github.com/rezoch340/jev-chat-JARVIS-windows.git
-cd jev-chat-JARVIS-windows
+git clone https://github.com/jev-chat/jev-chat-windows.git
+cd jev-chat-windows
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
@@ -157,7 +157,7 @@ pip install -r requirements.txt pyinstaller
 pyinstaller --noconfirm --clean jev.spec
 ```
 
-出来的是 `dist\jev-chat-JARVIS-windows\`，整个文件夹就是成品（onedir：onefile 有 150MB 要每次启动解压）。
+出来的是 `dist\jev-chat-windows\`，整个文件夹就是成品（onedir：onefile 有 150MB 要每次启动解压）。
 推一个 `v*` tag，`.github/workflows/release.yml` 会在 `windows-latest` 上打好、压成 zip 挂到 Release 上；
 手动触发（workflow_dispatch）只出 artifact，方便试打包。
 
